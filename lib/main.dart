@@ -1,8 +1,10 @@
+import 'package:alkafage/screens/product_screen.dart';
+import 'package:alkafage/screens/cart_screen.dart';
 import 'package:flutter/material.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
 import 'screens/home_screen.dart';
-import 'screens/search_screen.dart';
+import 'screens/orders/orders_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/profile_screen.dart';
 
@@ -42,7 +44,8 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _screens = const [
     HomeScreen(),
-    SearchScreen(),
+    ProductScreen(),
+    CartScreen(),
     FavoritesScreen(),
     ProfileScreen(),
   ];

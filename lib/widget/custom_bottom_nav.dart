@@ -68,7 +68,7 @@ class _CustomBottomNavState extends State<CustomBottomNav>
   void _onDragUpdate(DragUpdateDetails details, double itemWidth) {
     setState(() {
       _dragOffset += details.delta.dx;
-      final maxOffset = itemWidth * (3 - widget.selectedIndex);
+      final maxOffset = itemWidth * (4 - widget.selectedIndex);
       final minOffset = -itemWidth * widget.selectedIndex;
       _dragOffset = _dragOffset.clamp(minOffset, maxOffset);
     });
@@ -76,7 +76,7 @@ class _CustomBottomNavState extends State<CustomBottomNav>
 
   void _onDragEnd(DragEndDetails details, double itemWidth) {
     final currentPosition = widget.selectedIndex * itemWidth + _dragOffset;
-    final newIndex = (currentPosition / itemWidth).round().clamp(0, 3);
+    final newIndex = (currentPosition / itemWidth).round().clamp(0, 4);
 
     setState(() {
       _isDragging = false;
@@ -94,7 +94,7 @@ class _CustomBottomNavState extends State<CustomBottomNav>
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final itemWidth = (screenWidth - 40) / 4;
+    final itemWidth = (screenWidth - 40) / 5;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20.0, 0, 20.0, 20.0),
@@ -139,10 +139,11 @@ class _CustomBottomNavState extends State<CustomBottomNav>
                   // المحتوى الرئيسي
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(4, (index) {
+                    children: List.generate(5, (index) {
                       final icons = [
                         Icons.house_rounded,
-                        Icons.search_rounded,
+                        Icons.shopping_bag_rounded,
+                        Icons.shopping_cart_rounded,
                         Icons.favorite_rounded,
                         Icons.person_rounded,
                       ];
@@ -258,7 +259,8 @@ class _CustomBottomNavState extends State<CustomBottomNav>
                                   child: Icon(
                                     [
                                       Icons.house_rounded,
-                                      Icons.search_rounded,
+                                      Icons.shopping_bag_rounded,
+                                      Icons.shopping_cart_rounded,
                                       Icons.favorite_rounded,
                                       Icons.person_rounded,
                                     ][widget.selectedIndex],

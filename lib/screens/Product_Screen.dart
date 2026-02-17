@@ -4,14 +4,14 @@ import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
 import '../widget/custom_search_bar.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class ProductScreen extends StatefulWidget {
+  const ProductScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<ProductScreen> createState() => _ProductScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _ProductScreenState extends State<ProductScreen> {
   final ScrollController _scrollController = ScrollController();
 
   // بيانات التصنيفات
@@ -401,7 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 25),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -445,11 +445,12 @@ class _HomeScreenState extends State<HomeScreen> {
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 // العنوان الرئيسي
                 Text(
                   product['title']!,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.primaryColor,
                     fontSize: 16,
@@ -462,12 +463,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 // النص الفرعي
                 Text(
                   product['subtitle']!,
+                  textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 // السعر
                 Text(
                   product['price']!,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.primaryColor,
                     fontSize: 18,
