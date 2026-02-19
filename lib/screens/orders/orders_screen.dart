@@ -5,6 +5,7 @@ import 'package:alkafage/screens/orders/in_progress_screen.dart';
 import 'package:alkafage/screens/orders/completed_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 import 'dart:ui';
 import '../../utls/constants.dart';
 
@@ -93,51 +94,64 @@ class _OrdersScreenState extends State<OrdersScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Padding(
-        padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0),
-        child: Column(
-          children: [
-            // الهيدر الثابت
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // زر الرجوع على اليسار
-                    BubbleButton(
-                      icon: Icons.arrow_back,
-                      onTap: () {
-                        // وظيفة زر الرجوع
-                      },
+      body: Stack(
+        children: [
+          // صورة الخلفية
+          Positioned.fill(
+            child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
+          ),
+          // الفلتر الأزرق الفاتح
+          Positioned.fill(
+            child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
+          ),
+          // المحتوى
+          Padding(
+            padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0),
+            child: Column(
+              children: [
+                // الهيدر الثابت
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 5),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // زر الرجوع على اليسار
+                        BubbleButton(
+                          icon: Icons.arrow_back,
+                          onTap: () {
+                            Get.back();
+                          },
+                        ),
+                        // النص في الوسط
+                        MyText(text: "واجهة الطلبات"),
+                        // مساحة فارغة للتوازن
+                        BubbleButton(
+                          icon: Icons.person,
+                          onTap: () {
+                            // وظيفة زر الرجوع
+                          },
+                        ),
+                      ],
                     ),
-                    // النص في الوسط
-                    MyText(text: "واجهة الطلبات"),
-                    // مساحة فارغة للتوازن
-                    BubbleButton(
-                      icon: Icons.person,
-                      onTap: () {
-                        // وظيفة زر الرجوع
-                      },
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 15),
+                // تاب بار ببلي
+                _buildBubbleTabBar(),
+                const SizedBox(height: 15),
+                // محتوى الصفحات
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: _buildTabContent(),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 15),
-            // تاب بار ببلي
-            _buildBubbleTabBar(),
-            const SizedBox(height: 15),
-            // محتوى الصفحات
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _buildTabContent(),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

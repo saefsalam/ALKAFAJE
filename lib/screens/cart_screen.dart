@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:get/get.dart';
 import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
+import 'sales_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -16,19 +18,19 @@ class _CartScreenState extends State<CartScreen> {
       'name': 'صحن كريستال دائري',
       'price': 12500,
       'quantity': 2,
-      'image': 'assets/img/img1.png',
+      'icon': Icons.dinner_dining,
     },
     {
       'name': 'كوب زجاجي مزخرف',
       'price': 8000,
       'quantity': 1,
-      'image': 'assets/img/img2.png',
+      'icon': Icons.local_cafe,
     },
     {
       'name': 'طقم أكرلك ملون',
       'price': 35000,
       'quantity': 1,
-      'image': 'assets/img/img3.png',
+      'icon': Icons.kitchen,
     },
   ];
 
@@ -169,18 +171,10 @@ class _CartScreenState extends State<CartScreen> {
                                         height: 70,
                                         color: AppColors.primaryColor
                                             .withOpacity(0.08),
-                                        child: Image.asset(
-                                          item['image'],
-                                          fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (context, error, stackTrace) =>
-                                                  Icon(
-                                                    Icons.image_outlined,
-                                                    color: AppColors
-                                                        .primaryColor
-                                                        .withOpacity(0.3),
-                                                    size: 30,
-                                                  ),
+                                        child: Icon(
+                                          item['icon'],
+                                          color: AppColors.primaryColor,
+                                          size: 35,
                                         ),
                                       ),
                                     ),
@@ -315,7 +309,14 @@ class _CartScreenState extends State<CartScreen> {
                               ),
                               GestureDetector(
                                 onTap: () {
-                                  // وظيفة الشراء
+                                  Get.to(
+                                    () => SalesScreen(
+                                      cartItems: _cartItems,
+                                      totalPrice: _totalPrice,
+                                    ),
+                                    opaque: false,
+                                    transition: Transition.fadeIn,
+                                  );
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(

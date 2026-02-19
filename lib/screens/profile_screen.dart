@@ -1,5 +1,8 @@
+import 'package:alkafage/screens/orders/orders_screen.dart';
+import 'package:alkafage/screens/location_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:get/get.dart';
 import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
 
@@ -22,10 +25,7 @@ class ProfileScreen extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    BubbleButton(
-                      icon: Icons.arrow_back,
-                      onTap: () {},
-                    ),
+                    BubbleButton(icon: Icons.arrow_back, onTap: () {}),
                     Text(
                       'الحساب',
                       style: GoogleFonts.cairo(
@@ -149,46 +149,47 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       child: Column(
                         children: [
-                          _buildMenuItem(
+                          MyMenuItem(
                             icon: Icons.receipt_long_rounded,
-                            title: 'الطلبات',
+                            title: 'متابعة الطلبات',
                             iconColor: AppColors.primaryColor,
-                            onTap: () {},
+                            onTap: () {
+                              Get.to(() => const OrdersScreen());
+                            },
                           ),
-                          _buildDivider(),
-                          _buildMenuItem(
-                            icon: Icons.location_on_rounded,
-                            title: 'الموقع',
-                            iconColor: AppColors.primaryColor,
-                            onTap: () {},
-                          ),
-                          _buildDivider(),
-                          _buildMenuItem(
+                          const CustomDivider(),
+                          MyMenuItem(
                             icon: Icons.map_rounded,
                             title: 'الموقع',
                             iconColor: AppColors.primaryColor,
-                            onTap: () {},
+                            onTap: () {
+                              Get.to(
+                                () => const LocationScreen(),
+                                opaque: false,
+                                transition: Transition.fadeIn,
+                              );
+                            },
                           ),
-                          _buildDivider(),
-                          _buildMenuItem(
+                          const CustomDivider(),
+                          MyMenuItem(
                             icon: Icons.notifications_rounded,
                             title: 'الاشعارات',
                             iconColor: AppColors.primaryColor,
                             onTap: () {},
                           ),
-                          _buildDivider(),
-                          _buildMenuItem(
+                          const CustomDivider(),
+                          MyMenuItem(
+                            icon: Icons.language_rounded,
+                            title: 'لغة التطبيق',
+                            iconColor: AppColors.primaryColor,
+                            onTap: () {},
+                          ),
+                          const CustomDivider(),
+                          MyMenuItem(
                             icon: Icons.logout_rounded,
                             title: 'تسجيل الخروج',
                             iconColor: Colors.red,
                             backgroundColor: Colors.red.withOpacity(0.1),
-                            onTap: () {},
-                          ),
-                          _buildDivider(),
-                          _buildMenuItem(
-                            icon: Icons.language_rounded,
-                            title: 'لغة التطبيق',
-                            iconColor: AppColors.primaryColor,
                             onTap: () {},
                           ),
                         ],
@@ -203,14 +204,26 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildMenuItem({
-    required IconData icon,
-    required String title,
-    required Color iconColor,
-    Color? backgroundColor,
-    required VoidCallback onTap,
-  }) {
+class MyMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Color iconColor;
+  final Color? backgroundColor;
+  final VoidCallback onTap;
+
+  const MyMenuItem({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.iconColor,
+    this.backgroundColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -235,26 +248,23 @@ class ProfileScreen extends StatelessWidget {
                 color: backgroundColor ?? iconColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                color: iconColor,
-                size: 22,
-              ),
+              child: Icon(icon, color: iconColor, size: 22),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildDivider() {
+class CustomDivider extends StatelessWidget {
+  const CustomDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Divider(
-        height: 1,
-        thickness: 1,
-        color: Colors.grey[200],
-      ),
+      child: Divider(height: 1, thickness: 1, color: Colors.grey[200]),
     );
   }
 }

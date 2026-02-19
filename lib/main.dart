@@ -1,6 +1,7 @@
 import 'package:alkafage/screens/product_screen.dart';
 import 'package:alkafage/screens/cart_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
 import 'screens/home_screen.dart';
@@ -17,7 +18,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return GetMaterialApp(
       title: 'Alkafajy',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -42,14 +43,6 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    ProductScreen(),
-    CartScreen(),
-    FavoritesScreen(),
-    ProfileScreen(),
-  ];
-
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -71,7 +64,31 @@ class _MainScreenState extends State<MainScreen> {
             child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
           ),
           // المحتوى
-          _screens[_selectedIndex],
+          IndexedStack(
+            index: _selectedIndex,
+            children: [
+              Navigator(
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const HomeScreen()),
+              ),
+              Navigator(
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const ProductScreen()),
+              ),
+              Navigator(
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const CartScreen()),
+              ),
+              Navigator(
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const FavoritesScreen()),
+              ),
+              Navigator(
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const ProfileScreen()),
+              ),
+            ],
+          ),
         ],
       ),
       bottomNavigationBar: CustomBottomNav(
