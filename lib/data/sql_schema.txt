@@ -1,0 +1,176 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.banner_ads (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  image_path text NOT NULL,
+  sort_order smallint NOT NULL DEFAULT 1,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT banner_ads_pkey PRIMARY KEY (id),
+  CONSTRAINT banner_ads_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
+);
+CREATE TABLE public.cart_items (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  cart_id bigint NOT NULL,
+  item_id bigint NOT NULL,
+  quantity integer NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT cart_items_pkey PRIMARY KEY (id),
+  CONSTRAINT cart_items_cart_id_fkey FOREIGN KEY (cart_id) REFERENCES public.carts(id),
+  CONSTRAINT cart_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+);
+CREATE TABLE public.carts (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  customer_id bigint NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT carts_pkey PRIMARY KEY (id),
+  CONSTRAINT carts_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT carts_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
+);
+CREATE TABLE public.categories (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  shop_id uuid NOT NULL,
+  name text NOT NULL,
+  icon text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT categories_pkey PRIMARY KEY (id),
+  CONSTRAINT categories_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
+);
+CREATE TABLE public.customers (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  name text NOT NULL,
+  phone text CHECK (phone IS NULL OR length(phone) >= 7 AND length(phone) <= 20),
+  city text,
+  location text,
+  address text,
+  is_active boolean NOT NULL DEFAULT true,
+  is_banned boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  auth_user_id uuid UNIQUE,
+  CONSTRAINT customers_pkey PRIMARY KEY (id),
+  CONSTRAINT customers_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT customers_auth_user_id_fkey FOREIGN KEY (auth_user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.delivery_zones (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  city text NOT NULL,
+  price numeric NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT delivery_zones_pkey PRIMARY KEY (id),
+  CONSTRAINT delivery_zones_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
+);
+CREATE TABLE public.item_images (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  item_id bigint NOT NULL,
+  image_path text NOT NULL,
+  sort_order smallint NOT NULL DEFAULT 1,
+  is_primary boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT item_images_pkey PRIMARY KEY (id),
+  CONSTRAINT item_images_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+);
+CREATE TABLE public.items (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  category_id uuid NOT NULL,
+  title text NOT NULL,
+  description text,
+  price numeric NOT NULL DEFAULT 0 CHECK (price >= 0::numeric),
+  is_active boolean NOT NULL DEFAULT true,
+  is_deleted boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT items_pkey PRIMARY KEY (id),
+  CONSTRAINT items_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT items_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
+);
+CREATE TABLE public.order_items (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  order_id bigint NOT NULL,
+  item_id bigint NOT NULL,
+  quantity integer NOT NULL CHECK (quantity > 0),
+  unit_price numeric NOT NULL,
+  line_total numeric NOT NULL,
+  title_snapshot text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT order_items_pkey PRIMARY KEY (id),
+  CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT order_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+);
+CREATE TABLE public.order_status_history (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  order_id bigint NOT NULL,
+  status text NOT NULL,
+  changed_by uuid,
+  notes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT order_status_history_pkey PRIMARY KEY (id),
+  CONSTRAINT order_status_history_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT order_status_history_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES auth.users(id)
+);
+CREATE TABLE public.orders (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  customer_id bigint NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'confirmed'::text, 'preparing'::text, 'shipped'::text, 'delivered'::text, 'cancelled'::text])),
+  subtotal numeric NOT NULL DEFAULT 0,
+  delivery_fee numeric NOT NULL DEFAULT 0,
+  total numeric NOT NULL DEFAULT 0,
+  note text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT orders_pkey PRIMARY KEY (id),
+  CONSTRAINT orders_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
+);
+CREATE TABLE public.shop_users (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role text NOT NULL DEFAULT 'staff'::text CHECK (role = ANY (ARRAY['owner'::text, 'admin'::text, 'staff'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT shop_users_pkey PRIMARY KEY (id),
+  CONSTRAINT shop_users_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT shop_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.shops (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  display_name text NOT NULL,
+  phone text,
+  address text,
+  primary_color text DEFAULT '#000000'::text CHECK (primary_color ~* '^#[a-f0-9]{6}$'::text),
+  logo_url text,
+  primary_language text NOT NULL DEFAULT 'ar'::text,
+  facebook_url text,
+  instagram_url text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT shops_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.whatsapp_otps (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  customer_id bigint NOT NULL,
+  phone text NOT NULL,
+  otp text NOT NULL,
+  is_sent boolean NOT NULL DEFAULT false,
+  verified_at timestamp with time zone,
+  expires_at timestamp with time zone NOT NULL DEFAULT (now() + '00:05:00'::interval),
+  attempts integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT whatsapp_otps_pkey PRIMARY KEY (id),
+  CONSTRAINT whatsapp_otps_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT whatsapp_otps_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
+);
