@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../utls/constants.dart';
-import '../widget/bubble_button.dart';
-import '../widget/custom_search_bar.dart';
-import 'product_detail_screen.dart';
-import '../models/product_model.dart';
-import '../main.dart'; // استيراد SupabaseConfig من main.dart
+import '../../utls/constants.dart';
+import '../../widget/bubble_button.dart';
+import '../../widget/custom_search_bar.dart';
+import '../product_detail_screen.dart';
+import '../../models/product_model.dart';
+import '../../main.dart'; // استيراد SupabaseConfig من main.dart
+import '../../widget/product_card.dart';
 
 class ProductScreen extends StatefulWidget {
   const ProductScreen({super.key});
@@ -793,106 +794,19 @@ class _ProductScreenState extends State<ProductScreen> {
 
   Widget _buildCard(int index) {
     final item = _filteredItems[index];
-    final primaryImage = item.images.firstWhere(
-      (img) => img.isPrimary,
-      orElse: () => item.images.first,
-    );
 
-    return GestureDetector(
-      onTap: () {
-        // الانتقال إلى صفحة تفاصيل المنتج مع إخفاء شريط التنقل
-        Navigator.of(context, rootNavigator: true).push(
-          MaterialPageRoute(
-            builder: (context) => ProductDetailScreen(item: item),
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 25),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFFFFF),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              spreadRadius: 2,
-              offset: const Offset(0, 4),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 25),
+      child: ProductCard(
+        item: item,
+        onTap: () {
+          // الانتقال إلى صفحة تفاصيل المنتج مع إخفاء شريط التنقل
+          Navigator.of(context, rootNavigator: true).push(
+            MaterialPageRoute(
+              builder: (context) => ProductDetailScreen(item: item),
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // الصورة الرئيسية
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-                child: Image.asset(
-                  primaryImage.imagePath,
-                  height: 140,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 140,
-                      color: Colors.grey[200],
-                      child: Icon(
-                        Icons.image,
-                        size: 50,
-                        color: AppColors.primaryColor.withOpacity(0.3),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            // المحتوى
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // العنوان الرئيسي
-                  Text(
-                    item.title,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.primaryColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  // الوصف المختصر
-                  Text(
-                    item.description ?? '',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  // السعر
-                  Text(
-                    '${item.price.toStringAsFixed(0)} د.ع',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.primaryColor,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

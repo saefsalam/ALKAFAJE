@@ -1,28 +1,23 @@
-import 'package:alkafage/screens/product_screen.dart';
 import 'package:alkafage/screens/cart_screen.dart';
+import 'package:alkafage/screens/product_screen/Product_Screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
-import 'screens/home_screen.dart';
+import 'screens/home/home_screen.dart';
 import 'screens/orders/orders_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/profile_screen.dart';
 
-
 class SupabaseConfig {
-  
   static const String supabaseUrl = 'https://ibwawjjqewuikmmnxqgo.supabase.co';
-
 
   static const String supabaseAnonKey =
       'sb_publishable_UDC3-1lmARJgip7zcwAYtg_jE2MMral';
 
- 
   static const String shopId = '550e8400-e29b-41d4-a716-446655440001';
 }
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
