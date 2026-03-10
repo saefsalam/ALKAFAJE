@@ -1,5 +1,103 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 import '../utls/constants.dart';
+import '../models/product_model.dart';
+import '../widget/bubble_button.dart';
+import 'product_detail_screen.dart';
+import '../main.dart';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// خدمة إدارة المفضلة - للاستخدام من أي صفحة
+// ═══════════════════════════════════════════════════════════════════════════
+class FavoritesService {
+  static int? _currentCustomerId = 1; // مؤقت للاختبار
+
+  // StreamController لإرسال إشعارات بالتغييرات
+  static final _favoritesChangeController = StreamController<bool>.broadcast();
+
+  // Stream للاستماع للتغييرات
+  static Stream<bool> get favoritesChangeStream =>
+      _favoritesChangeController.stream;
+
+  // دالة لإرسال إشعار بالتغيير
+  static void _notifyChange() {
+    if (!_favoritesChangeController.isClosed) {
+      _favoritesChangeController.add(true);
+    }
+  }
+
+  static void setCustomerId(int customerId) {
+    _currentCustomerId = customerId;
+  }
+
+  static Future<bool> checkIfFavorite(int itemId) async {
+    if (_currentCustomerId == null) return false;
+
+    try {
+      final supabase = Supabase.instance.client;
+      final existing =
+          await supabase
+              .from('favorites')
+              .select('id')
+              .eq('shop_id', SupabaseConfig.shopId)
+              .eq('customer_id', _currentCustomerId!)
+              .eq('item_id', itemId)
+              .maybeSingle();
+
+      return existing != null;
+    } catch (e) {
+      print('❌ خطأ في التحقق من المفضلة: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> toggleFavorite(int itemId) async {
+    if (_currentCustomerId == null) return false;
+
+    try {
+      final supabase = Supabase.instance.client;
+      final existing =
+          await supabase
+              .from('favorites')
+              .select('id')
+              .eq('shop_id', SupabaseConfig.shopId)
+              .eq('customer_id', _currentCustomerId!)
+              .eq('item_id', itemId)
+              .maybeSingle();
+
+      if (existing != null) {
+        // إزالة من المفضلة
+        await supabase
+            .from('favorites')
+            .delete()
+            .eq('shop_id', SupabaseConfig.shopId)
+            .eq('customer_id', _currentCustomerId!)
+            .eq('item_id', itemId);
+
+        // إرسال إشعار بالتغيير
+        _notifyChange();
+        return false; // ليس مفضلاً بعد الحذف
+      } else {
+        // إضافة للمفضلة
+        await supabase.from('favorites').insert({
+          'shop_id': SupabaseConfig.shopId,
+          'customer_id': _currentCustomerId,
+          'item_id': itemId,
+        });
+
+        // إرسال إشعار بالتغيير
+        _notifyChange();
+        return true; // مفضل بعد الإضافة
+      }
+    } catch (e) {
+      print('❌ خطأ في تبديل حالة المفضلة: $e');
+      return false;
+    }
+  }
+}
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -9,179 +107,520 @@ class FavoritesScreen extends StatefulWidget {
 }
 
 class _FavoritesScreenState extends State<FavoritesScreen> {
-  final List<Map<String, dynamic>> _favorites = [
-    {
-      'title': 'عنصر مفضل 1',
-      'subtitle': 'وصف العنصر الأول',
-      'icon': Icons.favorite,
-      'color': Colors.red,
-    },
-    {
-      'title': 'عنصر مفضل 2',
-      'subtitle': 'وصف العنصر الثاني',
-      'icon': Icons.star,
-      'color': Colors.yellow,
-    },
-    {
-      'title': 'عنصر مفضل 3',
-      'subtitle': 'وصف العنصر الثالث',
-      'icon': Icons.bookmark,
-      'color': Colors.green,
-    },
-    {
-      'title': 'عنصر مفضل 4',
-      'subtitle': 'وصف العنصر الرابع',
-      'icon': Icons.thumb_up,
-      'color': Colors.blue,
-    },
-  ];
+  // ═══════════════════════════════════════════════════════════════════════════
+  // المتغيرات
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  void _removeItem(int index) {
-    setState(() {
-      _favorites.removeAt(index);
+  List<Item> _favorites = [];
+  bool _isLoading = true;
+  StreamSubscription<bool>? _favoritesSubscription;
+
+  // Supabase
+  final _supabase = Supabase.instance.client;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // دوال المفضلة
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites();
+
+    // الاستماع للتغييرات من FavoritesService
+    _favoritesSubscription = FavoritesService.favoritesChangeStream.listen((_) {
+      print('🔔 تم استقبال إشعار بتغيير في المفضلة');
+      _loadFavorites();
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('تم الحذف من المفضلة'),
-        backgroundColor: AppColors.primaryColor.withOpacity(0.8),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
+  }
+
+  @override
+  void dispose() {
+    _favoritesSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadFavorites() async {
+    setState(() => _isLoading = true);
+
+    final customerId = FavoritesService._currentCustomerId;
+    if (customerId == null) {
+      print('❌ لا يوجد عميل مسجل');
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final data = await _supabase
+          .from('favorites')
+          .select('''
+            id,
+            item_id,
+            items (
+              id,
+              shop_id,
+              category_id,
+              title,
+              description,
+              price,
+              item_images (
+                id,
+                item_id,
+                image_path,
+                sort_order,
+                is_primary
+              )
+            )
+          ''')
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+
+      List<Item> favoriteItems = [];
+      for (var fav in data) {
+        final itemData = fav['items'];
+        if (itemData != null) {
+          // تحويل الصور
+          List<ItemImage> images = [];
+          if (itemData['item_images'] != null) {
+            images =
+                (itemData['item_images'] as List)
+                    .map((img) => ItemImage.fromJson(img))
+                    .toList();
+          }
+
+          // إنشاء Item
+          final item = Item(
+            id: itemData['id'],
+            shopId: itemData['shop_id'],
+            categoryId: itemData['category_id'],
+            title: itemData['title'] ?? '',
+            description: itemData['description'],
+            price: (itemData['price'] as num).toDouble(),
+            images: images,
+          );
+
+          favoriteItems.add(item);
+        }
+      }
+
+      setState(() {
+        _favorites = favoriteItems;
+        _isLoading = false;
+      });
+
+      print('✅ تم تحميل ${_favorites.length} منتج مفضل');
+    } catch (e) {
+      print('❌ خطأ في تحميل المفضلات: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<bool> _addToFavoritesDB(int itemId) async {
+    final customerId = FavoritesService._currentCustomerId;
+    if (customerId == null) {
+      print('❌ لا يوجد عميل مسجل');
+      return false;
+    }
+
+    try {
+      // التحقق من وجوده مسبقاً
+      final existing =
+          await _supabase
+              .from('favorites')
+              .select('id')
+              .eq('shop_id', SupabaseConfig.shopId)
+              .eq('customer_id', customerId)
+              .eq('item_id', itemId)
+              .maybeSingle();
+
+      if (existing != null) {
+        print('⚠️ المنتج موجود بالفعل في المفضلة');
+        return false;
+      }
+
+      await _supabase.from('favorites').insert({
+        'shop_id': SupabaseConfig.shopId,
+        'customer_id': customerId,
+        'item_id': itemId,
+      });
+
+      return true;
+    } catch (e) {
+      print('❌ خطأ في إضافة المنتج للمفضلة: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _removeFromFavoritesDB(int itemId) async {
+    final customerId = FavoritesService._currentCustomerId;
+    if (customerId == null) return false;
+
+    try {
+      await _supabase
+          .from('favorites')
+          .delete()
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('customer_id', customerId)
+          .eq('item_id', itemId);
+
+      return true;
+    } catch (e) {
+      print('❌ خطأ في حذف المنتج من المفضلة: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _clearFavoritesDB() async {
+    final customerId = FavoritesService._currentCustomerId;
+    if (customerId == null) return false;
+
+    try {
+      await _supabase
+          .from('favorites')
+          .delete()
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('customer_id', customerId);
+
+      return true;
+    } catch (e) {
+      print('❌ خطأ في حذف جميع المفضلات: $e');
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // عمليات المفضلة
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _removeItem(int index) async {
+    final itemId = _favorites[index].id;
+    final success = await _removeFromFavoritesDB(itemId);
+
+    if (success) {
+      await _loadFavorites();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم الحذف من المفضلة', style: GoogleFonts.cairo()),
+          backgroundColor: AppColors.primaryColor.withOpacity(0.8),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
+  void _clearAllFavorites() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Text(
+              'حذف جميع المفضلات',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.cairo(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryColor,
+              ),
+            ),
+            content: Text(
+              'هل أنت متأكد من حذف جميع المنتجات المفضلة؟',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.cairo(),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'إلغاء',
+                  style: GoogleFonts.cairo(color: Colors.grey),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('حذف', style: GoogleFonts.cairo(color: Colors.red)),
+              ),
+            ],
+          ),
     );
+
+    if (confirm == true) {
+      final success = await _clearFavoritesDB();
+      if (success) {
+        await _loadFavorites();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم حذف جميع المفضلات', style: GoogleFonts.cairo()),
+            backgroundColor: AppColors.primaryColor.withOpacity(0.8),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  void _navigateToProductDetail(Item item) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ProductDetailScreen(item: item)),
+    );
+    // لا حاجة للانتظار - الStream سيتعامل مع التغييرات تلقائياً
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-
-      body: _favorites.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: 90.0),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.all(30),
-                  margin: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 2,
+      body: Column(
+        children: [
+          // الهيدر
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.all(15.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  BubbleButton(icon: Icons.favorite_border, onTap: () {}),
+                  Text(
+                    'المفضلة',
+                    style: GoogleFonts.cairo(
+                      color: AppColors.primaryColor,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  child: const Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.favorite_border_rounded,
-                        size: 100,
+                  BubbleButton(
+                    icon: Icons.delete_outline,
+                    onTap: _favorites.isEmpty ? () {} : _clearAllFavorites,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // المحتوى
+          Expanded(
+            child:
+                _isLoading
+                    ? Center(
+                      child: CircularProgressIndicator(
                         color: AppColors.primaryColor,
                       ),
-                      SizedBox(height: 20),
-                      Text(
-                        'لا توجد عناصر في المفضلة',
-                        style: TextStyle(
-                          color: AppColors.primaryColor,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
+                    )
+                    : _favorites.isEmpty
+                    ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.favorite_border_rounded,
+                            size: 80,
+                            color: AppColors.primaryColor.withOpacity(0.4),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'لا توجد منتجات مفضلة',
+                            style: GoogleFonts.cairo(
+                              color: AppColors.primaryColor,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'ابدأ بإضافة منتجاتك المفضلة',
+                            style: GoogleFonts.cairo(
+                              color: AppColors.primaryColor.withOpacity(0.5),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: 10),
-                      Text(
-                        'ابدأ بإضافة العناصر المفضلة لديك',
-                        style: TextStyle(
-                          color: AppColors.primaryColor,
-                          fontSize: 16,
-                        ),
-                        textAlign: TextAlign.center,
+                    )
+                    : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(15, 0, 15, 90),
+                      itemCount: _favorites.length,
+                      itemBuilder: (context, index) {
+                        return _buildFavoriteItem(_favorites[index], index);
+                      },
+                    ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFavoriteItem(Item item, int index) {
+    final itemId = item.id;
+    final title = item.title;
+    final price = item.price;
+    final imagePath =
+        item.images.isNotEmpty
+            ? item.images.first.imagePath
+            : 'assets/img/main.png';
+
+    return Dismissible(
+      key: Key('favorite_item_$itemId'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        alignment: Alignment.centerLeft,
+        child: const Icon(Icons.delete, color: Colors.white, size: 30),
+      ),
+      onDismissed: (_) => _removeItem(index),
+      child: GestureDetector(
+        onTap: () => _navigateToProductDetail(item),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.white.withOpacity(0.25),
+                blurRadius: 8,
+                spreadRadius: 0,
+                offset: const Offset(0, 0),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                spreadRadius: -1,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // صورة المنتج
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  width: 70,
+                  height: 70,
+                  child:
+                      imagePath.startsWith('http')
+                          ? CachedNetworkImage(
+                            imageUrl: imagePath,
+                            fit: BoxFit.cover,
+                            placeholder:
+                                (context, url) => Container(
+                                  color: AppColors.primaryColor.withOpacity(
+                                    0.08,
+                                  ),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.primaryColor.withOpacity(
+                                        0.5,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            errorWidget:
+                                (context, url, error) => Container(
+                                  color: AppColors.primaryColor.withOpacity(
+                                    0.08,
+                                  ),
+                                  child: Icon(
+                                    Icons.image,
+                                    color: AppColors.primaryColor.withOpacity(
+                                      0.3,
+                                    ),
+                                  ),
+                                ),
+                          )
+                          : Image.asset(
+                            imagePath,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: AppColors.primaryColor.withOpacity(0.08),
+                                child: Icon(
+                                  Icons.image,
+                                  color: AppColors.primaryColor.withOpacity(
+                                    0.3,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // تفاصيل المنتج
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.cairo(
+                        color: AppColors.primaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${price.toStringAsFixed(0)} د.ع',
+                      style: GoogleFonts.cairo(
+                        color: AppColors.primaryColor.withOpacity(0.6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // زر المفضلة
+              GestureDetector(
+                onTap: () => _removeItem(index),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.primaryColor.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.favorite,
+                    color: Colors.red,
+                    size: 20,
                   ),
                 ),
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 90),
-              itemCount: _favorites.length,
-              itemBuilder: (context, index) {
-                final item = _favorites[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 15),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 2,
-                    ),
-                  ),
-                  child: Dismissible(
-                    key: Key(item['title']),
-                    direction: DismissDirection.endToStart,
-                    onDismissed: (direction) => _removeItem(index),
-                    background: Container(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.only(left: 20),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryColor.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Icon(
-                        Icons.delete_rounded,
-                        color: Colors.white,
-                        size: 35,
-                      ),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(15),
-                      leading: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: item['color'].withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(
-                            color: item['color'].withOpacity(0.5),
-                            width: 2,
-                          ),
-                        ),
-                        child: Icon(
-                          item['icon'],
-                          color: AppColors.primaryColor,
-                          size: 30,
-                        ),
-                      ),
-                      title: Text(
-                        item['title'],
-                        style: const TextStyle(
-                          color: AppColors.primaryColor,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.right,
-                      ),
-                      subtitle: Text(
-                        item['subtitle'],
-                        style: TextStyle(
-                          color: AppColors.primaryColor.withOpacity(0.7),
-                          fontSize: 14,
-                        ),
-                        textAlign: TextAlign.right,
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(
-                          Icons.favorite,
-                          color: AppColors.primaryColor,
-                          size: 28,
-                        ),
-                        onPressed: () => _removeItem(index),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -197,3 +197,15 @@ CREATE TABLE public.whatsapp_otps (
   CONSTRAINT whatsapp_otps_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
   CONSTRAINT whatsapp_otps_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
 );
+CREATE TABLE public.favorites (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  customer_id bigint NOT NULL,
+  item_id bigint NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT favorites_pkey PRIMARY KEY (id),
+  CONSTRAINT favorites_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT favorites_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
+  CONSTRAINT favorites_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id),
+  CONSTRAINT favorites_unique UNIQUE (customer_id, item_id)
+);

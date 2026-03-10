@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
 import 'screens/home/home_screen.dart';
-import 'screens/orders/orders_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/profile_screen.dart';
 

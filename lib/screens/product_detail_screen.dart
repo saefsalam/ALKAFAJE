@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
 import '../models/product_model.dart';
+import 'favorites_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Item item;
@@ -17,11 +18,46 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _currentImageIndex = 0;
   final PageController _pageController = PageController();
   bool _isFavorite = false;
+  bool _isCheckingFavorite = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkFavoriteStatus();
+  }
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkFavoriteStatus() async {
+    final isFav = await FavoritesService.checkIfFavorite(widget.item.id);
+    setState(() {
+      _isFavorite = isFav;
+      _isCheckingFavorite = false;
+    });
+  }
+
+  Future<void> _toggleFavorite() async {
+    final newState = await FavoritesService.toggleFavorite(widget.item.id);
+    setState(() {
+      _isFavorite = newState;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newState ? 'تمت الإضافة للمفضلة' : 'تم الحذف من المفضلة',
+          style: GoogleFonts.cairo(),
+        ),
+        backgroundColor: AppColors.primaryColor.withOpacity(0.8),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   void _openImageGallery(int initialIndex) {
@@ -148,11 +184,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 top: 15,
                                 right: 15,
                                 child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _isFavorite = !_isFavorite;
-                                    });
-                                  },
+                                  onTap: _toggleFavorite,
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
@@ -165,16 +197,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                         ),
                                       ],
                                     ),
-                                    child: Icon(
-                                      _isFavorite
-                                          ? Icons.favorite
-                                          : Icons.favorite_border,
-                                      color:
-                                          _isFavorite
-                                              ? Colors.red
-                                              : AppColors.primaryColor,
-                                      size: 24,
-                                    ),
+                                    child:
+                                        _isCheckingFavorite
+                                            ? SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: AppColors.primaryColor,
+                                              ),
+                                            )
+                                            : Icon(
+                                              _isFavorite
+                                                  ? Icons.favorite
+                                                  : Icons.favorite_border,
+                                              color:
+                                                  _isFavorite
+                                                      ? Colors.red
+                                                      : AppColors.primaryColor,
+                                              size: 24,
+                                            ),
                                   ),
                                 ),
                               ),
