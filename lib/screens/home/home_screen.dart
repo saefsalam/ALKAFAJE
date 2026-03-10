@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utls/constants.dart';
 import 'part_items_screen.dart';
 import '../../widget/product_card.dart';
+import '../../widget/bubble_button.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // الشاشة الرئيسية - كود بسيط بدون widgets خارجية
@@ -246,16 +247,46 @@ class _HomeScreenState extends State<HomeScreen> {
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        part['name'] ?? '',
-                                        style: GoogleFonts.cairo(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.primaryColor,
+                                      Container(
+                                        height: 35,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                        ),
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: Colors.transparent,
+                                          borderRadius: BorderRadius.circular(18),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(0.3),
+                                            width: 1.5,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.white.withOpacity(0.25),
+                                              blurRadius: 8,
+                                              spreadRadius: 0,
+                                              offset: const Offset(0, 0),
+                                            ),
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.1),
+                                              blurRadius: 4,
+                                              spreadRadius: -1,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          part['name'] ?? '',
+                                          style: GoogleFonts.cairo(
+                                            color: AppColors.primaryColor,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
-                                      TextButton(
-                                        onPressed: () {
+                                      TextBubbleButton(
+                                        text: 'عرض الكل',
+                                        onTap: () {
                                           Get.to(
                                             () => PartItemsScreen(
                                               partName: part['name'] ?? '',
@@ -263,17 +294,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                             ),
                                           );
                                         },
-                                        child: Text(
-                                          'عرض الكل',
-                                          style: GoogleFonts.cairo(
-                                            fontSize: 14,
-                                            color: AppColors.primaryColor,
-                                          ),
-                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
+
+                                const SizedBox(height: 8),
 
                                 // قائمة المنتجات الأفقية
                                 SizedBox(

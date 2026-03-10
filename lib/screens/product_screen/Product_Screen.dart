@@ -33,6 +33,16 @@ class _ProductScreenState extends State<ProductScreen> {
   bool _searchInTitle = true; // البحث في العنوان
   bool _searchInDescription = true; // البحث في الوصف
 
+  // إعدادات Pagination
+  static const int _pageSize = 20; // عدد المنتجات في كل دفعة
+  int _currentPage = 0;
+  bool _isLoadingMore = false;
+  bool _hasMoreItems = true;
+
+  // إخفاء/إظهار التصنيفات عند التمرير
+  bool _showCategories = true;
+  double _lastScrollPosition = 0;
+
   // الحصول على Supabase Client
   final _supabase = Supabase.instance.client;
 
@@ -43,6 +53,33 @@ class _ProductScreenState extends State<ProductScreen> {
 
     // الاستماع لتغييرات البحث
     _searchController.addListener(_onSearchChanged);
+
+    // الاستماع للتمرير لتحميل المزيد
+    _scrollController.addListener(_onScroll);
+  }
+
+  // عند التمرير للأسفل
+  void _onScroll() {
+    // تحميل المزيد عند الاقتراب من النهاية
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreItems();
+    }
+
+    // إخفاء/إظهار التصنيفات حسب اتجاه التمرير
+    final currentPosition = _scrollController.position.pixels;
+    if (currentPosition > _lastScrollPosition && currentPosition > 50) {
+      // التمرير لأسفل - إخفاء
+      if (_showCategories) {
+        setState(() => _showCategories = false);
+      }
+    } else if (currentPosition < _lastScrollPosition) {
+      // التمرير لأعلى - إظهار
+      if (!_showCategories) {
+        setState(() => _showCategories = true);
+      }
+    }
+    _lastScrollPosition = currentPosition;
   }
 
   // عند تغيير نص البحث
@@ -132,7 +169,9 @@ class _ProductScreenState extends State<ProductScreen> {
             );
           }).toList();
 
-      // جلب المنتجات من قاعدة البيانات
+      // جلب المنتجات من قاعدة البيانات - أول دفعة
+      _currentPage = 0;
+      _hasMoreItems = true;
       final itemsData = await _supabase
           .from('items') // ✅ اسم الجدول الصحيح
           .select('''
@@ -142,7 +181,8 @@ class _ProductScreenState extends State<ProductScreen> {
           .eq('shop_id', SupabaseConfig.shopId)
           .eq('is_active', true)
           .eq('is_deleted', false) // ✅ إضافة فلتر للمنتجات المحذوفة
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .range(0, _pageSize - 1); // تحميل أول 20 منتج
 
       // تحويل البيانات إلى قائمة Item
       final items =
@@ -201,6 +241,11 @@ class _ProductScreenState extends State<ProductScreen> {
             );
           }).toList();
 
+      // التحقق إذا كان هناك المزيد من المنتجات
+      if (items.length < _pageSize) {
+        _hasMoreItems = false;
+      }
+
       setState(() {
         _categories = categories;
         _allItems = items;
@@ -210,6 +255,100 @@ class _ProductScreenState extends State<ProductScreen> {
     } catch (e) {
       print('خطأ في تحميل البيانات: $e');
       setState(() => _isLoading = false);
+    }
+  }
+
+  // تحميل المزيد من المنتجات
+  Future<void> _loadMoreItems() async {
+    if (_isLoadingMore || !_hasMoreItems || _searchQuery.isNotEmpty) return;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      _currentPage++;
+      final startIndex = _currentPage * _pageSize;
+      final endIndex = startIndex + _pageSize - 1;
+
+      final itemsData = await _supabase
+          .from('items')
+          .select('''
+            *,
+            item_images(*) 
+          ''')
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('is_active', true)
+          .eq('is_deleted', false)
+          .order('created_at', ascending: false)
+          .range(startIndex, endIndex);
+
+      final newItems =
+          (itemsData as List).map((product) {
+            final images =
+                (product['item_images'] as List?)?.map((img) {
+                  return ItemImage(
+                    id: img['id'] ?? 0,
+                    itemId: img['item_id'] ?? 0,
+                    imagePath: img['image_path'] ?? 'assets/img/main.png',
+                    sortOrder: img['sort_order'] ?? 1,
+                    isPrimary: img['is_primary'] ?? false,
+                    createdAt:
+                        img['created_at'] != null
+                            ? DateTime.parse(img['created_at'])
+                            : DateTime.now(),
+                  );
+                }).toList() ??
+                [];
+
+            if (images.isEmpty) {
+              images.add(
+                ItemImage(
+                  id: 0,
+                  itemId: product['id'] ?? 0,
+                  imagePath: 'assets/img/main.png',
+                  sortOrder: 1,
+                  isPrimary: true,
+                ),
+              );
+            }
+
+            return Item(
+              id: product['id'],
+              shopId: product['shop_id'],
+              title: product['title'],
+              description: product['description'],
+              price: (product['price'] as num).toDouble(),
+              categoryId: product['category_id'],
+              isActive: product['is_active'] ?? true,
+              isDeleted: product['is_deleted'] ?? false,
+              createdAt:
+                  product['created_at'] != null
+                      ? DateTime.parse(product['created_at'])
+                      : DateTime.now(),
+              updatedAt:
+                  product['updated_at'] != null
+                      ? DateTime.parse(product['updated_at'])
+                      : DateTime.now(),
+              images: images,
+            );
+          }).toList();
+
+      if (newItems.length < _pageSize) {
+        _hasMoreItems = false;
+      }
+
+      setState(() {
+        _allItems.addAll(newItems);
+        _isLoadingMore = false;
+      });
+      _applyFilters();
+
+      print(
+        '📦 تم تحميل ${newItems.length} منتج إضافي - المجموع: ${_allItems.length}',
+      );
+    } catch (e) {
+      print('خطأ في تحميل المزيد: $e');
+      _currentPage--;
+      setState(() => _isLoadingMore = false);
     }
   }
 
@@ -400,164 +539,189 @@ class _ProductScreenState extends State<ProductScreen> {
                     ),
                     const SizedBox(height: 10),
                     // شريط التصنيفات الأفقي
-                    SizedBox(
-                      height: 100,
-                      child: Directionality(
-                        textDirection: TextDirection.rtl,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          itemCount: _categories.length + 1, // +1 لزر "الكل"
-                          itemBuilder: (context, index) {
-                            final isAll = index == 0; // الزر الأول هو "الكل"
-                            final isSelected = _selectedCategoryIndex == index;
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      height: _showCategories ? 100 : 0,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _showCategories ? 1.0 : 0.0,
+                        child: SizedBox(
+                          height: 100,
+                          child: Directionality(
+                            textDirection: TextDirection.rtl,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              itemCount:
+                                  _categories.length + 1, // +1 لزر "الكل"
+                              itemBuilder: (context, index) {
+                                final isAll =
+                                    index == 0; // الزر الأول هو "الكل"
+                                final isSelected =
+                                    _selectedCategoryIndex == index;
 
-                            // إذا كان زر "الكل"
-                            if (isAll) {
-                              return Padding(
-                                padding: const EdgeInsets.only(left: 12),
-                                child: GestureDetector(
-                                  onTap: () => _filterItemsByCategory(index),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 72,
-                                        height: 72,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color:
-                                              isSelected
-                                                  ? AppColors.primaryColor
-                                                  : AppColors.primaryColor
-                                                      .withOpacity(0.6),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: AppColors.primaryColor
-                                                  .withOpacity(0.3),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 3),
+                                // إذا كان زر "الكل"
+                                if (isAll) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(left: 12),
+                                    child: GestureDetector(
+                                      onTap:
+                                          () => _filterItemsByCategory(index),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 72,
+                                            height: 72,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color:
+                                                  isSelected
+                                                      ? AppColors.primaryColor
+                                                      : AppColors.primaryColor
+                                                          .withOpacity(0.6),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: AppColors.primaryColor
+                                                      .withOpacity(0.3),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 3),
+                                                ),
+                                              ],
                                             ),
-                                          ],
-                                        ),
-                                        alignment: Alignment.center,
-                                        child: Text(
-                                          'الكل',
-                                          style: GoogleFonts.cairo(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }
-
-                            // التصنيفات الأخرى
-                            final category = _categories[index - 1];
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 12),
-                              child: GestureDetector(
-                                onTap: () => _filterItemsByCategory(index),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 72,
-                                      height: 72,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: AppColors.primaryColor,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: AppColors.primaryColor
-                                                .withOpacity(0.3),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 3),
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              'الكل',
+                                              style: GoogleFonts.cairo(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
                                           ),
                                         ],
                                       ),
-                                      child: ClipOval(
-                                        child: Stack(
-                                          children: [
-                                            Positioned.fill(
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                  1.5,
-                                                ),
-                                                child: ClipOval(
-                                                  child: Image.asset(
-                                                    category.icon ??
-                                                        'assets/img/main.png',
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder: (
-                                                      context,
-                                                      error,
-                                                      stackTrace,
-                                                    ) {
-                                                      return Icon(
-                                                        Icons.image,
-                                                        color: Colors.white
-                                                            .withOpacity(0.5),
-                                                        size: 30,
-                                                      );
-                                                    },
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Positioned(
-                                              bottom: 0,
-                                              left: 0,
-                                              right: 0,
-                                              child: Container(
-                                                padding: const EdgeInsets.only(
-                                                  bottom: 8,
-                                                  top: 6,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(
-                                                    begin:
-                                                        Alignment.bottomCenter,
-                                                    end: Alignment.topCenter,
-                                                    stops: const [
-                                                      0.0,
-                                                      0.5,
-                                                      1.0,
-                                                    ],
-                                                    colors: [
-                                                      AppColors.primaryColor
-                                                          .withOpacity(0.95),
-                                                      AppColors.primaryColor
-                                                          .withOpacity(0.7),
-                                                      AppColors.primaryColor
-                                                          .withOpacity(0.0),
-                                                    ],
-                                                  ),
-                                                ),
-                                                child: Text(
-                                                  category.name,
-                                                  textAlign: TextAlign.center,
-                                                  style: GoogleFonts.cairo(
-                                                    color: Colors.white,
-                                                    fontSize: 9,
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
+                                  );
+                                }
+
+                                // التصنيفات الأخرى
+                                final category = _categories[index - 1];
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 12),
+                                  child: GestureDetector(
+                                    onTap: () => _filterItemsByCategory(index),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 72,
+                                          height: 72,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: AppColors.primaryColor,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.3),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 3),
+                                              ),
+                                            ],
+                                          ),
+                                          child: ClipOval(
+                                            child: Stack(
+                                              children: [
+                                                Positioned.fill(
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                          1.5,
+                                                        ),
+                                                    child: ClipOval(
+                                                      child: Image.asset(
+                                                        category.icon ??
+                                                            'assets/img/main.png',
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder: (
+                                                          context,
+                                                          error,
+                                                          stackTrace,
+                                                        ) {
+                                                          return Icon(
+                                                            Icons.image,
+                                                            color: Colors.white
+                                                                .withOpacity(
+                                                                  0.5,
+                                                                ),
+                                                            size: 30,
+                                                          );
+                                                        },
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                Positioned(
+                                                  bottom: 0,
+                                                  left: 0,
+                                                  right: 0,
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                          bottom: 8,
+                                                          top: 6,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(
+                                                        begin:
+                                                            Alignment
+                                                                .bottomCenter,
+                                                        end:
+                                                            Alignment.topCenter,
+                                                        stops: const [
+                                                          0.0,
+                                                          0.5,
+                                                          1.0,
+                                                        ],
+                                                        colors: [
+                                                          AppColors.primaryColor
+                                                              .withOpacity(
+                                                                0.95,
+                                                              ),
+                                                          AppColors.primaryColor
+                                                              .withOpacity(0.7),
+                                                          AppColors.primaryColor
+                                                              .withOpacity(0.0),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      category.name,
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                      style: GoogleFonts.cairo(
+                                                        color: Colors.white,
+                                                        fontSize: 9,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -615,90 +779,140 @@ class _ProductScreenState extends State<ProductScreen> {
                               : SingleChildScrollView(
                                 controller: _scrollController,
                                 padding: const EdgeInsets.only(bottom: 90.0),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                child: Column(
                                   children: [
-                                    // العمود الأيمن - العناصر الزوجية (0, 2, 4, ...)
-                                    Expanded(
-                                      child: Column(
-                                        children: List.generate(
-                                          (_filteredItems.length / 2).ceil(),
-                                          (index) {
-                                            final actualIndex = index * 2;
-                                            if (actualIndex >=
-                                                _filteredItems.length)
-                                              return const SizedBox();
-                                            return _buildCard(actualIndex);
-                                          },
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // العمود الأيمن - العناصر الزوجية (0, 2, 4, ...)
+                                        Expanded(
+                                          child: Column(
+                                            children: List.generate(
+                                              (_filteredItems.length / 2)
+                                                  .ceil(),
+                                              (index) {
+                                                final actualIndex = index * 2;
+                                                if (actualIndex >=
+                                                    _filteredItems.length)
+                                                  return const SizedBox();
+                                                return _buildCard(actualIndex);
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 25),
+                                        // العمود الأيسر - العناصر الفردية (1, 3, 5, ...)
+                                        Expanded(
+                                          child: Column(
+                                            children: [
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 8.0,
+                                                  bottom: 8.0,
+                                                ),
+                                                child: Container(
+                                                  height: 35,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 14,
+                                                      ),
+                                                  alignment: Alignment.center,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.transparent,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          18,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: Colors.white
+                                                          .withOpacity(0.3),
+                                                      width: 1.5,
+                                                    ),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.white
+                                                            .withOpacity(0.25),
+                                                        blurRadius: 8,
+                                                        spreadRadius: 0,
+                                                        offset: const Offset(
+                                                          0,
+                                                          0,
+                                                        ),
+                                                      ),
+                                                      BoxShadow(
+                                                        color: Colors.black
+                                                            .withOpacity(0.1),
+                                                        blurRadius: 4,
+                                                        spreadRadius: -1,
+                                                        offset: const Offset(
+                                                          0,
+                                                          2,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Text(
+                                                    'المنتجات',
+                                                    style: GoogleFonts.cairo(
+                                                      color:
+                                                          AppColors
+                                                              .primaryColor,
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              ...List.generate(
+                                                (_filteredItems.length / 2)
+                                                    .floor(),
+                                                (index) {
+                                                  final actualIndex =
+                                                      index * 2 + 1;
+                                                  if (actualIndex >=
+                                                      _filteredItems.length)
+                                                    return const SizedBox();
+                                                  return _buildCard(
+                                                    actualIndex,
+                                                  );
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    // مؤشر تحميل المزيد
+                                    if (_isLoadingMore)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 20,
+                                        ),
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                            color: AppColors.primaryColor,
+                                            strokeWidth: 2,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 25),
-                                    // العمود الأيسر - العناصر الفردية (1, 3, 5, ...)
-                                    Expanded(
-                                      child: Column(
-                                        children: [
-                                          Padding(
-                                            padding: const EdgeInsets.only(
-                                              top: 8.0,
-                                              bottom: 8.0,
-                                            ),
-                                            child: Container(
-                                              height: 35,
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 14,
-                                                  ),
-                                              alignment: Alignment.center,
-                                              decoration: BoxDecoration(
-                                                color: Colors.transparent,
-                                                borderRadius:
-                                                    BorderRadius.circular(18),
-                                                border: Border.all(
-                                                  color: Colors.white
-                                                      .withOpacity(0.3),
-                                                  width: 1.5,
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.white
-                                                        .withOpacity(0.25),
-                                                    blurRadius: 8,
-                                                    spreadRadius: 0,
-                                                    offset: const Offset(0, 0),
-                                                  ),
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withOpacity(0.1),
-                                                    blurRadius: 4,
-                                                    spreadRadius: -1,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Text(
-                                                'المنتجات',
-                                                style: GoogleFonts.cairo(
-                                                  color: AppColors.primaryColor,
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                            ),
+                                    // رسالة نهاية المنتجات
+                                    if (!_hasMoreItems &&
+                                        _filteredItems.isNotEmpty &&
+                                        _searchQuery.isEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 20,
+                                        ),
+                                        child: Text(
+                                          'لا يوجد منتجات أخرى',
+                                          style: GoogleFonts.cairo(
+                                            color: Colors.grey[500],
+                                            fontSize: 14,
                                           ),
-                                          ...List.generate(
-                                            (_filteredItems.length / 2).floor(),
-                                            (index) {
-                                              final actualIndex = index * 2 + 1;
-                                              if (actualIndex >=
-                                                  _filteredItems.length)
-                                                return const SizedBox();
-                                              return _buildCard(actualIndex);
-                                            },
-                                          ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
                                   ],
                                 ),
                               ),
