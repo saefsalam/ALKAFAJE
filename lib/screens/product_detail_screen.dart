@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
 import '../models/product_model.dart';
 import 'favorites_screen.dart';
+import '../main.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Item item;
@@ -19,6 +21,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final PageController _pageController = PageController();
   bool _isFavorite = false;
   bool _isCheckingFavorite = true;
+  int _quantity = 1;
+  bool _isAddingToCart = false;
+
+  // Supabase
+  static final _supabase = Supabase.instance.client;
+  static int? _currentCustomerId = 1; // مؤقت للاختبار
+  static int? _currentCartId;
 
   @override
   void initState() {
@@ -38,6 +47,118 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       _isFavorite = isFav;
       _isCheckingFavorite = false;
     });
+  }
+
+  Future<int?> _getOrCreateCart() async {
+    if (_currentCustomerId == null) return null;
+    if (_currentCartId != null) return _currentCartId;
+
+    try {
+      final existingCart =
+          await _supabase
+              .from('carts')
+              .select('id')
+              .eq('shop_id', SupabaseConfig.shopId)
+              .eq('customer_id', _currentCustomerId!)
+              .maybeSingle();
+
+      if (existingCart != null) {
+        _currentCartId = existingCart['id'];
+        return _currentCartId;
+      }
+
+      final newCart =
+          await _supabase
+              .from('carts')
+              .insert({
+                'shop_id': SupabaseConfig.shopId,
+                'customer_id': _currentCustomerId,
+              })
+              .select('id')
+              .single();
+
+      _currentCartId = newCart['id'];
+      return _currentCartId;
+    } catch (e) {
+      print('❌ خطأ في الحصول على السلة: $e');
+      return null;
+    }
+  }
+
+  Future<void> _addToCart() async {
+    if (_isAddingToCart) return;
+
+    setState(() => _isAddingToCart = true);
+
+    try {
+      final cartId = await _getOrCreateCart();
+      if (cartId == null) {
+        throw Exception('لا يمكن الحصول على السلة');
+      }
+
+      final existingItem =
+          await _supabase
+              .from('cart_items')
+              .select('id, quantity')
+              .eq('cart_id', cartId)
+              .eq('item_id', widget.item.id)
+              .maybeSingle();
+
+      if (existingItem != null) {
+        final newQuantity = existingItem['quantity'] + _quantity;
+        await _supabase
+            .from('cart_items')
+            .update({
+              'quantity': newQuantity,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', existingItem['id']);
+      } else {
+        await _supabase.from('cart_items').insert({
+          'cart_id': cartId,
+          'item_id': widget.item.id,
+          'quantity': _quantity,
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تم إضافة $_quantity من ${widget.item.title} إلى السلة',
+              style: GoogleFonts.cairo(),
+              textAlign: TextAlign.center,
+            ),
+            backgroundColor: AppColors.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+        setState(() => _quantity = 1);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'حدث خطأ أثناء الإضافة للسلة',
+              style: GoogleFonts.cairo(),
+              textAlign: TextAlign.center,
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isAddingToCart = false);
+      }
+    }
   }
 
   Future<void> _toggleFavorite() async {
@@ -327,7 +448,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             // العنوان والسعر
                             Row(
@@ -336,8 +457,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
                                         widget.item.title,
@@ -360,31 +480,113 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     ],
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 15,
-                                    vertical: 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primaryColor,
-                                    borderRadius: BorderRadius.circular(15),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.primaryColor
-                                            .withOpacity(0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    // السعر
+                                    if (widget.item.hasDiscount) ...[
+                                      // السعر القديم مشطوب
+                                      Text(
+                                        '${widget.item.price.toStringAsFixed(0)} د.ع',
+                                        style: GoogleFonts.cairo(
+                                          color: Colors.grey[500],
+                                          fontSize: 14,
+                                          decoration:
+                                              TextDecoration.lineThrough,
+                                          decorationColor: Colors.grey[500],
+                                          decorationThickness: 2,
+                                        ),
                                       ),
-                                    ],
-                                  ),
-                                  child: Text(
-                                    '${widget.item.price.toStringAsFixed(0)} د.ع',
-                                    style: GoogleFonts.cairo(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                                      const SizedBox(height: 5),
+                                      // السعر الجديد مع بادج الخصم
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // نسبة الخصم
+                                          if (widget.item.discountPercent !=
+                                              null)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFE53935),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                '-${widget.item.discountPercent}%',
+                                                style: GoogleFonts.cairo(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          const SizedBox(width: 8),
+                                          // السعر الجديد
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 15,
+                                              vertical: 10,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFE53935),
+                                              borderRadius:
+                                                  BorderRadius.circular(15),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: const Color(
+                                                    0xFFE53935,
+                                                  ).withOpacity(0.4),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 3),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Text(
+                                              '${widget.item.finalPrice.toStringAsFixed(0)} د.ع',
+                                              style: GoogleFonts.cairo(
+                                                color: Colors.white,
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ] else
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 15,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primaryColor,
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppColors.primaryColor
+                                                  .withOpacity(0.3),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          '${widget.item.price.toStringAsFixed(0)} د.ع',
+                                          style: GoogleFonts.cairo(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -470,14 +672,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     child: Row(
                       children: [
                         IconButton(
-                          onPressed: () {},
-                          icon: const Icon(
+                          onPressed: () {
+                            if (_quantity > 1) {
+                              setState(() => _quantity--);
+                            }
+                          },
+                          icon: Icon(
                             Icons.remove,
-                            color: AppColors.primaryColor,
+                            color:
+                                _quantity > 1
+                                    ? AppColors.primaryColor
+                                    : Colors.grey,
                           ),
                         ),
                         Text(
-                          '1',
+                          '$_quantity',
                           style: GoogleFonts.cairo(
                             color: AppColors.primaryColor,
                             fontSize: 18,
@@ -485,7 +694,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           ),
                         ),
                         IconButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            setState(() => _quantity++);
+                          },
                           icon: const Icon(
                             Icons.add,
                             color: AppColors.primaryColor,
@@ -498,23 +709,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   // زر الإضافة للسلة
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {
-                        // إضافة للسلة
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'تم إضافة المنتج إلى السلة',
-                              style: GoogleFonts.cairo(),
-                              textAlign: TextAlign.center,
-                            ),
-                            backgroundColor: AppColors.primaryColor,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        );
-                      },
+                      onPressed: _isAddingToCart ? null : _addToCart,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryColor,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -523,21 +718,34 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                         elevation: 5,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.shopping_cart, color: Colors.white),
-                          const SizedBox(width: 10),
-                          Text(
-                            'إضافة إلى السلة',
-                            style: GoogleFonts.cairo(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
+                      child:
+                          _isAddingToCart
+                              ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                              : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.shopping_cart,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'إضافة إلى السلة',
+                                    style: GoogleFonts.cairo(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
                     ),
                   ),
                 ],

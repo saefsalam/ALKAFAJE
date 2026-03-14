@@ -1,72 +1,123 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utls/constants.dart';
+import '../../models/order_model.dart';
 
-class CompletedScreen extends StatelessWidget {
+class CompletedScreen extends StatefulWidget {
   const CompletedScreen({super.key});
 
-  final List<Map<String, String>> _completedOrders = const [
-    {
-      'title': 'طلب #1000',
-      'date': '2026/01/20',
-      'total': '25,000 د.ع',
-      'items': '3 منتجات',
-    },
-    {
-      'title': 'طلب #998',
-      'date': '2026/01/15',
-      'total': '42,500 د.ع',
-      'items': '5 منتجات',
-    },
-    {
-      'title': 'طلب #995',
-      'date': '2026/01/10',
-      'total': '18,000 د.ع',
-      'items': '2 منتجات',
-    },
-    {
-      'title': 'طلب #990',
-      'date': '2026/01/05',
-      'total': '60,000 د.ع',
-      'items': '8 منتجات',
-    },
-    {
-      'title': 'طلب #985',
-      'date': '2025/12/28',
-      'total': '33,750 د.ع',
-      'items': '4 منتجات',
-    },
-  ];
+  @override
+  State<CompletedScreen> createState() => _CompletedScreenState();
+}
+
+class _CompletedScreenState extends State<CompletedScreen> {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // المتغيرات
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  final _supabase = Supabase.instance.client;
+  final String shopId = '550e8400-e29b-41d4-a716-446655440001';
+
+  List<Order> _completedOrders = [];
+  bool _isLoading = true;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // تحميل البيانات
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrders();
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final ordersData = await _supabase
+          .from('orders')
+          .select('*, customers(name)')
+          .eq('shop_id', shopId)
+          .inFilter('status', ['delivered', 'cancelled'])
+          .order('created_at', ascending: false)
+          .limit(50);
+
+      List<Order> orders = [];
+      for (var orderData in ordersData) {
+        orders.add(
+          Order(
+            id: orderData['id'],
+            shopId: orderData['shop_id'],
+            customerId: orderData['customer_id'],
+            status: OrderStatusExtension.fromString(orderData['status']),
+            subtotal: (orderData['subtotal'] ?? 0).toDouble(),
+            deliveryFee: (orderData['delivery_fee'] ?? 0).toDouble(),
+            total: (orderData['total'] ?? 0).toDouble(),
+            note: orderData['note'],
+            createdAt: DateTime.parse(orderData['created_at']),
+            updatedAt: DateTime.parse(orderData['updated_at']),
+            customerName: orderData['customers']?['name'],
+          ),
+        );
+      }
+
+      setState(() {
+        _completedOrders = orders;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('خطأ في تحميل الطلبات المكتملة: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // الواجهة
+  // ═══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
-    return _completedOrders.isEmpty
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.primaryColor),
+      );
+    }
+
+    final completedOrders = _completedOrders;
+
+    return completedOrders.isEmpty
         ? Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.check_circle_outline_rounded,
-                  size: 80,
-                  color: AppColors.primaryColor.withOpacity(0.4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.check_circle_outline_rounded,
+                size: 80,
+                color: AppColors.primaryColor.withOpacity(0.4),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'لا توجد طلبات مكتملة',
+                style: GoogleFonts.cairo(
+                  color: AppColors.primaryColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'لا توجد طلبات مكتملة',
-                  style: GoogleFonts.cairo(
-                    color: AppColors.primaryColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          )
-        : ListView.builder(
+              ),
+            ],
+          ),
+        )
+        : RefreshIndicator(
+          onRefresh: _loadOrders,
+          child: ListView.builder(
             padding: const EdgeInsets.only(bottom: 90),
-            itemCount: _completedOrders.length,
+            itemCount: completedOrders.length,
             itemBuilder: (context, index) {
-              final order = _completedOrders[index];
+              final order = completedOrders[index];
+              final dateFormat = DateFormat('yyyy/MM/dd');
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
@@ -99,11 +150,11 @@ class CompletedScreen extends StatelessWidget {
                       height: 50,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.green.withOpacity(0.15),
+                        color: order.status.color.withOpacity(0.15),
                       ),
-                      child: const Icon(
-                        Icons.check_circle_rounded,
-                        color: Colors.green,
+                      child: Icon(
+                        order.status.icon,
+                        color: order.status.color,
                         size: 26,
                       ),
                     ),
@@ -113,7 +164,7 @@ class CompletedScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            order['title']!,
+                            'طلب #${order.id}',
                             style: GoogleFonts.cairo(
                               color: AppColors.primaryColor,
                               fontSize: 16,
@@ -121,39 +172,14 @@ class CompletedScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Text(
-                                order['items']!,
-                                style: GoogleFonts.cairo(
-                                  color: AppColors.primaryColor.withOpacity(
-                                    0.6,
-                                  ),
-                                  fontSize: 12,
-                                ),
+                          if (order.customerName != null)
+                            Text(
+                              order.customerName!,
+                              style: GoogleFonts.cairo(
+                                color: AppColors.primaryColor.withOpacity(0.6),
+                                fontSize: 12,
                               ),
-                              const SizedBox(width: 8),
-                              Container(
-                                width: 4,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.primaryColor.withOpacity(
-                                    0.3,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                order['total']!,
-                                style: GoogleFonts.cairo(
-                                  color: Colors.green,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
                         ],
                       ),
                     ),
@@ -161,10 +187,19 @@ class CompletedScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          order['date']!,
+                          dateFormat.format(order.createdAt),
                           style: GoogleFonts.cairo(
                             color: AppColors.primaryColor.withOpacity(0.5),
                             fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${order.total.toStringAsFixed(0)} د.ع',
+                          style: GoogleFonts.cairo(
+                            color: order.status.color,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -174,13 +209,13 @@ class CompletedScreen extends StatelessWidget {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
+                            color: order.status.color.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            'مكتمل',
+                            order.status.label,
                             style: GoogleFonts.cairo(
-                              color: Colors.green,
+                              color: order.status.color,
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                             ),
@@ -192,6 +227,7 @@ class CompletedScreen extends StatelessWidget {
                 ),
               );
             },
-          );
+          ),
+        );
   }
 }

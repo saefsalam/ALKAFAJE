@@ -18,7 +18,8 @@ class CartScreen extends StatefulWidget {
   State<CartScreen> createState() => _CartScreenState();
 }
 
-class _CartScreenState extends State<CartScreen> {
+class _CartScreenState extends State<CartScreen>
+    with RouteAware, WidgetsBindingObserver {
   // ═══════════════════════════════════════════════════════════════════════════
   // المتغيرات
   // ═══════════════════════════════════════════════════════════════════════════
@@ -26,6 +27,7 @@ class _CartScreenState extends State<CartScreen> {
   List<Map<String, dynamic>> _cartItems = [];
   bool _isLoading = true;
   double _totalPrice = 0;
+  bool _isVisible = false;
 
   // Supabase
   static final _supabase = Supabase.instance.client;
@@ -237,7 +239,75 @@ class _CartScreenState extends State<CartScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadCartItems();
+
+    // الاستماع لإشعارات إعادة التحميل
+    cartReloadNotifier.addListener(_onReloadNotification);
+  }
+
+  void _onReloadNotification() {
+    print('🔔 تم استلام إشعار إعادة تحميل السلة');
+    _loadCartItems();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+
+    // إعادة التحميل عند التبديل للشاشة
+    if (!_isVisible) {
+      _isVisible = true;
+      Future.microtask(() => _loadCartItems());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    routeObserver.unsubscribe(this);
+    cartReloadNotifier.removeListener(_onReloadNotification);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isVisible) {
+      // إعادة التحميل عند العودة للتطبيق
+      _loadCartItems();
+    }
+  }
+
+  // استدعاء عند ظهور الشاشة (الدخول إليها)
+  @override
+  void didPopNext() {
+    // تم الرجوع إلى هذه الشاشة من شاشة أخرى
+    _isVisible = true;
+    print('🔄 تم الرجوع للسلة - إعادة التحميل');
+    _loadCartItems();
+  }
+
+  // استدعاء عند الدخول لأول مرة
+  @override
+  void didPush() {
+    // تم الدخول إلى هذه الشاشة
+    _isVisible = true;
+    print('🔄 تم الدخول للسلة');
+  }
+
+  // استدعاء عند مغادرة الشاشة
+  @override
+  void didPushNext() {
+    _isVisible = false;
+  }
+
+  @override
+  void didPop() {
+    _isVisible = false;
   }
 
   Future<void> _loadCartItems() async {
@@ -260,34 +330,47 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
+  // دالة عامة لإعادة تحميل السلة (يمكن استدعاؤها من الخارج)
+  void reloadCart() {
+    print('🔄 إعادة تحميل السلة من الخارج');
+    _loadCartItems();
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // عمليات السلة
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _incrementQuantity(int itemId) async {
-    final success = await _addToCartDB(itemId);
-    if (success) {
-      _loadCartItems();
-    }
+    // نأخذ الكمية الحالية
+    final index = _cartItems.indexWhere((item) => item['item_id'] == itemId);
+    if (index == -1) return;
+
+    final currentQuantity = _cartItems[index]['quantity'] as int;
+    final newQuantity = currentQuantity + 1;
+
+    // تحديث مباشر
+    await _updateQuantity(itemId, currentQuantity, newQuantity);
   }
 
   Future<void> _decrementQuantity(int itemId, int currentQuantity) async {
     if (currentQuantity <= 1) {
-      final success = await _deleteFromCartDB(itemId);
-      if (success) {
-        _loadCartItems();
-      }
+      await _deleteItem(itemId);
     } else {
-      final success = await _removeFromCartDB(itemId);
-      if (success) {
-        _loadCartItems();
-      }
+      final newQuantity = currentQuantity - 1;
+      await _updateQuantity(itemId, currentQuantity, newQuantity);
     }
   }
 
   Future<void> _deleteItem(int itemId) async {
+    // Optimistic Update - حذف من الواجهة فوراً
+    setState(() {
+      _cartItems.removeWhere((item) => item['item_id'] == itemId);
+      _totalPrice = _calculateTotal(_cartItems);
+    });
+
+    // حذف من قاعدة البيانات
     final success = await _deleteFromCartDB(itemId);
-    if (success) {
+    if (!success) {
       _loadCartItems();
     }
   }
@@ -339,6 +422,346 @@ class _CartScreenState extends State<CartScreen> {
       if (success) {
         _loadCartItems();
       }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // عرض نافذة تعديل الكمية (نفس modal إضافة المنتج)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _showEditQuantityModal(
+    int itemId,
+    int currentQuantity,
+    String title,
+    String imagePath,
+    double price,
+    String? description,
+  ) async {
+    int selectedQuantity = currentQuantity;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (context) => StatefulBuilder(
+            builder: (context, setSheetState) {
+              return Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(25),
+                    topRight: Radius.circular(25),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // شريط السحب
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 15),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+
+                    // زر الإغلاق X
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            size: 20,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // صورة المنتج
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: SizedBox(
+                        height: 150,
+                        width: 150,
+                        child:
+                            imagePath.startsWith('http')
+                                ? CachedNetworkImage(
+                                  imageUrl: imagePath,
+                                  fit: BoxFit.cover,
+                                  placeholder:
+                                      (context, url) => Container(
+                                        color: Colors.grey[200],
+                                        child: const Center(
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      ),
+                                  errorWidget:
+                                      (context, url, error) => Container(
+                                        color: Colors.grey[200],
+                                        child: const Icon(
+                                          Icons.image,
+                                          size: 50,
+                                        ),
+                                      ),
+                                )
+                                : Image.asset(
+                                  imagePath,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.grey[200],
+                                      child: const Icon(Icons.image, size: 50),
+                                    );
+                                  },
+                                ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    // اسم المنتج
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.cairo(
+                        color: AppColors.primaryColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    // الوصف
+                    if (description != null && description.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Text(
+                          description,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.cairo(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(height: 10),
+
+                    // السعر
+                    Text(
+                      '${price.toStringAsFixed(0)} د.ع',
+                      style: GoogleFonts.cairo(
+                        color: AppColors.primaryColor,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // عداد الكمية
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: AppColors.primaryColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // زر زيادة
+                          GestureDetector(
+                            onTap: () {
+                              setSheetState(() => selectedQuantity++);
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryColor,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.add,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+
+                          // الكمية
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 25),
+                            child: Text(
+                              '$selectedQuantity',
+                              style: GoogleFonts.cairo(
+                                color: AppColors.primaryColor,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+
+                          // زر إنقاص
+                          GestureDetector(
+                            onTap: () {
+                              if (selectedQuantity > 0) {
+                                setSheetState(() => selectedQuantity--);
+                              }
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color:
+                                    selectedQuantity > 0
+                                        ? AppColors.primaryColor
+                                        : Colors.grey[400],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.remove,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // المجموع
+                    Text(
+                      'المجموع: ${(price * selectedQuantity).toStringAsFixed(0)} د.ع',
+                      style: GoogleFonts.cairo(
+                        color: Colors.grey[700],
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // زر التحديث
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+
+                          if (selectedQuantity == 0) {
+                            // حذف المنتج
+                            await _deleteItem(itemId);
+                          } else if (selectedQuantity != currentQuantity) {
+                            // تحديث الكمية
+                            await _updateQuantity(
+                              itemId,
+                              currentQuantity,
+                              selectedQuantity,
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                        ),
+                        child: Text(
+                          selectedQuantity == 0
+                              ? 'حذف من السلة'
+                              : 'تحديث الكمية',
+                          style: GoogleFonts.cairo(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+                  ],
+                ),
+              );
+            },
+          ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // تحديث الكمية مباشرة
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _updateQuantity(
+    int itemId,
+    int oldQuantity,
+    int newQuantity,
+  ) async {
+    // Optimistic Update
+    setState(() {
+      final index = _cartItems.indexWhere((item) => item['item_id'] == itemId);
+      if (index != -1) {
+        _cartItems[index]['quantity'] = newQuantity;
+        _totalPrice = _calculateTotal(_cartItems);
+      }
+    });
+
+    // تحديث قاعدة البيانات
+    final cartId = await _getOrCreateCart();
+    if (cartId == null) {
+      _loadCartItems();
+      return;
+    }
+
+    try {
+      final existingItem =
+          await _supabase
+              .from('cart_items')
+              .select('id')
+              .eq('cart_id', cartId)
+              .eq('item_id', itemId)
+              .maybeSingle();
+
+      if (existingItem != null) {
+        await _supabase
+            .from('cart_items')
+            .update({
+              'quantity': newQuantity,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', existingItem['id']);
+      }
+    } catch (e) {
+      print('❌ خطأ في تحديث الكمية: $e');
+      _loadCartItems(); // إعادة التحميل عند الفشل
     }
   }
 
@@ -641,15 +1064,37 @@ class _CartScreenState extends State<CartScreen> {
                     icon: Icons.add,
                     onTap: () => _incrementQuantity(itemId),
                   ),
-                  // الكمية
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      '$quantity',
-                      style: GoogleFonts.cairo(
-                        color: AppColors.primaryColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                  // الكمية - قابلة للضغط لتعديلها
+                  GestureDetector(
+                    onTap: () {
+                      final item = cartItem['items'] as Map<String, dynamic>?;
+                      if (item != null) {
+                        _showEditQuantityModal(
+                          itemId,
+                          quantity,
+                          title,
+                          imagePath,
+                          price,
+                          item['description'],
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryColor.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$quantity',
+                        style: GoogleFonts.cairo(
+                          color: AppColors.primaryColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),

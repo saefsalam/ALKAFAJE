@@ -1,45 +1,123 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utls/constants.dart';
+import '../../models/order_model.dart';
 
-class PendingScreen extends StatelessWidget {
+class PendingScreen extends StatefulWidget {
   const PendingScreen({super.key});
 
-  final List<Map<String, String>> _pendingOrders = const [
-    {'title': 'طلب #1001', 'date': '2026/02/15', 'status': 'بانتظار الموافقة'},
-    {'title': 'طلب #1005', 'date': '2026/02/16', 'status': 'بانتظار الدفع'},
-    {'title': 'طلب #1008', 'date': '2026/02/17', 'status': 'بانتظار التأكيد'},
-  ];
+  @override
+  State<PendingScreen> createState() => _PendingScreenState();
+}
+
+class _PendingScreenState extends State<PendingScreen> {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // المتغيرات
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  final _supabase = Supabase.instance.client;
+  final String shopId = '550e8400-e29b-41d4-a716-446655440001';
+
+  List<Order> _pendingOrders = [];
+  bool _isLoading = true;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // تحميل البيانات
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrders();
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final ordersData = await _supabase
+          .from('orders')
+          .select('*, customers(name)')
+          .eq('shop_id', shopId)
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
+
+      List<Order> orders = [];
+      for (var orderData in ordersData) {
+        orders.add(
+          Order(
+            id: orderData['id'],
+            shopId: orderData['shop_id'],
+            customerId: orderData['customer_id'],
+            status: OrderStatusExtension.fromString(orderData['status']),
+            subtotal: (orderData['subtotal'] ?? 0).toDouble(),
+            deliveryFee: (orderData['delivery_fee'] ?? 0).toDouble(),
+            total: (orderData['total'] ?? 0).toDouble(),
+            note: orderData['note'],
+            createdAt: DateTime.parse(orderData['created_at']),
+            updatedAt: DateTime.parse(orderData['updated_at']),
+            customerName: orderData['customers']?['name'],
+          ),
+        );
+      }
+
+      setState(() {
+        _pendingOrders = orders;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('خطأ في تحميل الطلبات المعلقة: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // الواجهة
+  // ═══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
-    return _pendingOrders.isEmpty
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.primaryColor),
+      );
+    }
+
+    final pendingOrders = _pendingOrders;
+
+    return pendingOrders.isEmpty
         ? Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.hourglass_empty_rounded,
-                  size: 80,
-                  color: AppColors.primaryColor.withOpacity(0.4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.hourglass_empty_rounded,
+                size: 80,
+                color: AppColors.primaryColor.withOpacity(0.4),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'لا توجد طلبات قيد الانتظار',
+                style: GoogleFonts.cairo(
+                  color: AppColors.primaryColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'لا توجد طلبات قيد الانتظار',
-                  style: GoogleFonts.cairo(
-                    color: AppColors.primaryColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          )
-        : ListView.builder(
+              ),
+            ],
+          ),
+        )
+        : RefreshIndicator(
+          onRefresh: _loadOrders,
+          child: ListView.builder(
             padding: const EdgeInsets.only(bottom: 90),
-            itemCount: _pendingOrders.length,
+            itemCount: pendingOrders.length,
             itemBuilder: (context, index) {
-              final order = _pendingOrders[index];
+              final order = pendingOrders[index];
+              final dateFormat = DateFormat('yyyy/MM/dd');
+
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
@@ -72,11 +150,11 @@ class PendingScreen extends StatelessWidget {
                       height: 50,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.orange.withOpacity(0.15),
+                        color: order.status.color.withOpacity(0.15),
                       ),
-                      child: const Icon(
-                        Icons.hourglass_top_rounded,
-                        color: Colors.orange,
+                      child: Icon(
+                        order.status.icon,
+                        color: order.status.color,
                         size: 26,
                       ),
                     ),
@@ -86,7 +164,7 @@ class PendingScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            order['title']!,
+                            'طلب #${order.id}',
                             style: GoogleFonts.cairo(
                               color: AppColors.primaryColor,
                               fontSize: 16,
@@ -95,27 +173,52 @@ class PendingScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            order['status']!,
+                            order.status.label,
                             style: GoogleFonts.cairo(
-                              color: Colors.orange,
+                              color: order.status.color,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          if (order.customerName != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              order.customerName!,
+                              style: GoogleFonts.cairo(
+                                color: AppColors.primaryColor.withOpacity(0.6),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
-                    Text(
-                      order['date']!,
-                      style: GoogleFonts.cairo(
-                        color: AppColors.primaryColor.withOpacity(0.5),
-                        fontSize: 12,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          dateFormat.format(order.createdAt),
+                          style: GoogleFonts.cairo(
+                            color: AppColors.primaryColor.withOpacity(0.5),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${order.total.toStringAsFixed(0)} د.ع',
+                          style: GoogleFonts.cairo(
+                            color: order.status.color,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               );
             },
-          );
+          ),
+        );
   }
 }

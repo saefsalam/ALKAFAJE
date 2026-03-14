@@ -1,67 +1,122 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utls/constants.dart';
+import '../../models/order_model.dart';
 
-class InProgressScreen extends StatelessWidget {
+class InProgressScreen extends StatefulWidget {
   const InProgressScreen({super.key});
 
-  final List<Map<String, String>> _inProgressOrders = const [
-    {
-      'title': 'طلب #1002',
-      'date': '2026/02/10',
-      'status': 'جاري التوصيل',
-      'progress': '75',
-    },
-    {
-      'title': 'طلب #1003',
-      'date': '2026/02/12',
-      'status': 'جاري التجهيز',
-      'progress': '40',
-    },
-    {
-      'title': 'طلب #1006',
-      'date': '2026/02/14',
-      'status': 'جاري الشحن',
-      'progress': '60',
-    },
-    {
-      'title': 'طلب #1009',
-      'date': '2026/02/15',
-      'status': 'تم التغليف',
-      'progress': '50',
-    },
-  ];
+  @override
+  State<InProgressScreen> createState() => _InProgressScreenState();
+}
+
+class _InProgressScreenState extends State<InProgressScreen> {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // المتغيرات
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  final _supabase = Supabase.instance.client;
+  final String shopId = '550e8400-e29b-41d4-a716-446655440001';
+
+  List<Order> _inProgressOrders = [];
+  bool _isLoading = true;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // تحميل البيانات
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrders();
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final ordersData = await _supabase
+          .from('orders')
+          .select('*, customers(name)')
+          .eq('shop_id', shopId)
+          .inFilter('status', ['confirmed', 'preparing', 'shipped'])
+          .order('created_at', ascending: false);
+
+      List<Order> orders = [];
+      for (var orderData in ordersData) {
+        orders.add(
+          Order(
+            id: orderData['id'],
+            shopId: orderData['shop_id'],
+            customerId: orderData['customer_id'],
+            status: OrderStatusExtension.fromString(orderData['status']),
+            subtotal: (orderData['subtotal'] ?? 0).toDouble(),
+            deliveryFee: (orderData['delivery_fee'] ?? 0).toDouble(),
+            total: (orderData['total'] ?? 0).toDouble(),
+            note: orderData['note'],
+            createdAt: DateTime.parse(orderData['created_at']),
+            updatedAt: DateTime.parse(orderData['updated_at']),
+            customerName: orderData['customers']?['name'],
+          ),
+        );
+      }
+
+      setState(() {
+        _inProgressOrders = orders;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('خطأ في تحميل الطلبات الجارية: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // الواجهة
+  // ═══════════════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
-    return _inProgressOrders.isEmpty
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.primaryColor),
+      );
+    }
+
+    final inProgressOrders = _inProgressOrders;
+
+    return inProgressOrders.isEmpty
         ? Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.sync_rounded,
-                  size: 80,
-                  color: AppColors.primaryColor.withOpacity(0.4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.sync_rounded,
+                size: 80,
+                color: AppColors.primaryColor.withOpacity(0.4),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'لا توجد طلبات جارية',
+                style: GoogleFonts.cairo(
+                  color: AppColors.primaryColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'لا توجد طلبات جارية',
-                  style: GoogleFonts.cairo(
-                    color: AppColors.primaryColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          )
-        : ListView.builder(
+              ),
+            ],
+          ),
+        )
+        : RefreshIndicator(
+          onRefresh: _loadOrders,
+          child: ListView.builder(
             padding: const EdgeInsets.only(bottom: 90),
-            itemCount: _inProgressOrders.length,
+            itemCount: inProgressOrders.length,
             itemBuilder: (context, index) {
-              final order = _inProgressOrders[index];
-              final progress = int.parse(order['progress']!) / 100;
+              final order = inProgressOrders[index];
+              final dateFormat = DateFormat('yyyy/MM/dd');
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
@@ -96,11 +151,11 @@ class InProgressScreen extends StatelessWidget {
                           height: 50,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.blue.withOpacity(0.15),
+                            color: order.status.color.withOpacity(0.15),
                           ),
-                          child: const Icon(
-                            Icons.local_shipping_rounded,
-                            color: Colors.blue,
+                          child: Icon(
+                            order.status.icon,
+                            color: order.status.color,
                             size: 26,
                           ),
                         ),
@@ -110,7 +165,7 @@ class InProgressScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                order['title']!,
+                                'طلب #${order.id}',
                                 style: GoogleFonts.cairo(
                                   color: AppColors.primaryColor,
                                   fontSize: 16,
@@ -119,22 +174,48 @@ class InProgressScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                order['status']!,
+                                order.status.label,
                                 style: GoogleFonts.cairo(
-                                  color: Colors.blue,
+                                  color: order.status.color,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              if (order.customerName != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  order.customerName!,
+                                  style: GoogleFonts.cairo(
+                                    color: AppColors.primaryColor.withOpacity(
+                                      0.6,
+                                    ),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
-                        Text(
-                          order['date']!,
-                          style: GoogleFonts.cairo(
-                            color: AppColors.primaryColor.withOpacity(0.5),
-                            fontSize: 12,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              dateFormat.format(order.createdAt),
+                              style: GoogleFonts.cairo(
+                                color: AppColors.primaryColor.withOpacity(0.5),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${order.total.toStringAsFixed(0)} د.ع',
+                              style: GoogleFonts.cairo(
+                                color: order.status.color,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -143,13 +224,13 @@ class InProgressScreen extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: LinearProgressIndicator(
-                        value: progress,
+                        value: order.status.progress,
                         minHeight: 8,
                         backgroundColor: AppColors.primaryColor.withOpacity(
                           0.1,
                         ),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Colors.blue,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          order.status.color,
                         ),
                       ),
                     ),
@@ -157,9 +238,9 @@ class InProgressScreen extends StatelessWidget {
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        '${order['progress']}%',
+                        '${(order.status.progress * 100).toInt()}%',
                         style: GoogleFonts.cairo(
-                          color: Colors.blue,
+                          color: order.status.color,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -169,6 +250,7 @@ class InProgressScreen extends StatelessWidget {
                 ),
               );
             },
-          );
+          ),
+        );
   }
 }

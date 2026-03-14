@@ -106,6 +106,15 @@ class _ProductCardState extends State<ProductCard> {
             : widget.item.description;
     final dynamic price =
         widget.item is Map ? widget.item['price'] : widget.item.price;
+    final dynamic discountPrice =
+        widget.item is Map
+            ? widget.item['discount_price']
+            : widget.item.discountPrice;
+    final int? discountPercent =
+        widget.item is Map
+            ? widget.item['discount_percent']
+            : widget.item.discountPercent;
+    final bool hasDiscount = discountPrice != null && discountPrice < price;
 
     return GestureDetector(
       onTap:
@@ -140,67 +149,100 @@ class _ProductCardState extends State<ProductCard> {
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
                 ),
-                child: SizedBox(
-                  height: widget.imageHeight,
-                  child: PageView.builder(
-                    controller: _pageController,
-                    itemCount: _images.length,
-                    onPageChanged: (index) {
-                      _currentPage = index;
-                    },
-                    itemBuilder: (context, index) {
-                      final imagePath = _images[index];
-                      return imagePath.startsWith('http')
-                          ? CachedNetworkImage(
-                            imageUrl: imagePath,
-                            height: widget.imageHeight,
-                            fit: BoxFit.cover,
-                            placeholder:
-                                (context, url) => Container(
-                                  height: widget.imageHeight,
-                                  color: Colors.grey[200],
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppColors.primaryColor.withOpacity(
-                                        0.5,
+                child: Stack(
+                  children: [
+                    SizedBox(
+                      height: widget.imageHeight,
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: _images.length,
+                        onPageChanged: (index) {
+                          _currentPage = index;
+                        },
+                        itemBuilder: (context, index) {
+                          final imagePath = _images[index];
+                          return imagePath.startsWith('http')
+                              ? CachedNetworkImage(
+                                imageUrl: imagePath,
+                                height: widget.imageHeight,
+                                fit: BoxFit.cover,
+                                placeholder:
+                                    (context, url) => Container(
+                                      height: widget.imageHeight,
+                                      color: Colors.grey[200],
+                                      child: Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppColors.primaryColor
+                                              .withOpacity(0.5),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                            errorWidget:
-                                (context, url, error) => Container(
-                                  height: widget.imageHeight,
-                                  color: Colors.grey[200],
-                                  child: Icon(
-                                    Icons.image,
-                                    size: 50,
-                                    color: AppColors.primaryColor.withOpacity(
-                                      0.3,
+                                errorWidget:
+                                    (context, url, error) => Container(
+                                      height: widget.imageHeight,
+                                      color: Colors.grey[200],
+                                      child: Icon(
+                                        Icons.image,
+                                        size: 50,
+                                        color: AppColors.primaryColor
+                                            .withOpacity(0.3),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                          )
-                          : Image.asset(
-                            imagePath,
-                            height: widget.imageHeight,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
+                              )
+                              : Image.asset(
+                                imagePath,
                                 height: widget.imageHeight,
-                                color: Colors.grey[200],
-                                child: Icon(
-                                  Icons.image,
-                                  size: 50,
-                                  color: AppColors.primaryColor.withOpacity(
-                                    0.3,
-                                  ),
-                                ),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    height: widget.imageHeight,
+                                    color: Colors.grey[200],
+                                    child: Icon(
+                                      Icons.image,
+                                      size: 50,
+                                      color: AppColors.primaryColor.withOpacity(
+                                        0.3,
+                                      ),
+                                    ),
+                                  );
+                                },
                               );
-                            },
-                          );
-                    },
-                  ),
+                        },
+                      ),
+                    ),
+                    // بادج الخصم
+                    if (hasDiscount && discountPercent != null)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE53935),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            '-$discountPercent%',
+                            style: GoogleFonts.cairo(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -244,16 +286,46 @@ class _ProductCardState extends State<ProductCard> {
                     ),
 
                   // السعر
-                  Text(
-                    '${price is double ? price.toStringAsFixed(0) : price} د.ع',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.cairo(
-                      color: AppColors.primaryColor,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      height: 1.3,
+                  if (hasDiscount)
+                    Column(
+                      children: [
+                        // السعر القديم مشطوب
+                        Text(
+                          '${price is double ? price.toStringAsFixed(0) : price} د.ع',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.cairo(
+                            color: Colors.grey[500],
+                            fontSize: 10,
+                            decoration: TextDecoration.lineThrough,
+                            decorationColor: Colors.grey[500],
+                            decorationThickness: 2,
+                            height: 1.3,
+                          ),
+                        ),
+                        // السعر الجديد
+                        Text(
+                          '${discountPrice is double ? discountPrice.toStringAsFixed(0) : discountPrice} د.ع',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.cairo(
+                            color: const Color(0xFFE53935),
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      '${price is double ? price.toStringAsFixed(0) : price} د.ع',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.cairo(
+                        color: AppColors.primaryColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        height: 1.3,
+                      ),
                     ),
-                  ),
 
                   const SizedBox(height: 4),
 

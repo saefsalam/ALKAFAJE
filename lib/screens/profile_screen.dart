@@ -177,13 +177,7 @@ class ProfileScreen extends StatelessWidget {
                             iconColor: AppColors.primaryColor,
                             onTap: () {},
                           ),
-                          const CustomDivider(),
-                          MyMenuItem(
-                            icon: Icons.language_rounded,
-                            title: 'لغة التطبيق',
-                            iconColor: AppColors.primaryColor,
-                            onTap: () {},
-                          ),
+
                           const CustomDivider(),
                           MyMenuItem(
                             icon: Icons.logout_rounded,
