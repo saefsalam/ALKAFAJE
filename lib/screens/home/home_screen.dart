@@ -81,8 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
             .select('item_id')
             .eq('part_id', part['id']);
 
-        List<int> itemIds =
-            (partItemsData as List).map((e) => e['item_id'] as int).toList();
+        List<int> itemIds = (partItemsData as List)
+            .map((e) => e['item_id'] as int)
+            .toList();
 
         // جلب المنتجات
         List<Map<String, dynamic>> items = [];
@@ -93,10 +94,25 @@ class _HomeScreenState extends State<HomeScreen> {
               .inFilter('id', itemIds)
               .eq('is_active', true)
               .eq('is_deleted', false);
-
-          items = List<Map<String, dynamic>>.from(itemsData);
+          print("itemsData $itemsData");
+          items = itemsData;
+          items = itemsData.map((item) {
+            List images = item['item_images'];
+            images = images.map((img) {
+              img["image_path"] =
+                  "https://ibwawjjqewuikmmnxqgo.supabase.co/storage/v1/object/public/items/${img["image_path"]}";
+              if (img["is_primary"] == true) {
+                item["cover_image"] = img["image_path"];
+              }
+              return;
+            }).toList();
+            item['image_path'] = images.isNotEmpty
+                ? images
+                : 'assets/img/product_placeholder.png';
+            return item;
+          }).toList();
         }
-
+        print("items $items");
         partsWithItems.add({
           'id': part['id'],
           'name': part['name'],
@@ -105,7 +121,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _banners = List<Map<String, dynamic>>.from(bannersData);
+        _banners = bannersData.map((data) {
+          data['image_path'] =
+              "https://ibwawjjqewuikmmnxqgo.supabase.co/storage/v1/object/public/ads/${data['image_path']}";
+          return data;
+        }).toList();
         _parts = partsWithItems;
         _isLoading = false;
       });
@@ -132,208 +152,205 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body:
-            _isLoading
-                ? Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.primaryColor,
-                  ),
-                )
-                : SafeArea(
-                  bottom: false,
-                  child: RefreshIndicator(
-                    onRefresh: _loadData,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 100),
-                      child: Column(
-                        children: [
-                          // ═══════════════════════════════════════════════════
-                          // الهيدر
-                          // ═══════════════════════════════════════════════════
-                          Padding(
-                            padding: const EdgeInsets.all(15),
-                            child: Text(
-                              'شركة القرش',
-                              style: GoogleFonts.cairo(
-                                color: AppColors.primaryColor,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w700,
-                              ),
+        body: _isLoading
+            ? Center(
+                child: CircularProgressIndicator(color: AppColors.primaryColor),
+              )
+            : SafeArea(
+                bottom: false,
+                child: RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.only(bottom: 100),
+                    child: Column(
+                      children: [
+                        // ═══════════════════════════════════════════════════
+                        // الهيدر
+                        // ═══════════════════════════════════════════════════
+                        Padding(
+                          padding: const EdgeInsets.all(15),
+                          child: Text(
+                            'شركة القرش',
+                            style: GoogleFonts.cairo(
+                              color: AppColors.primaryColor,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+
+                        // ═══════════════════════════════════════════════════
+                        // البانرات
+                        // ═══════════════════════════════════════════════════
+                        if (_banners.isNotEmpty) ...[
+                          SizedBox(
+                            height: 160,
+                            child: PageView.builder(
+                              controller: _bannerController,
+                              onPageChanged: (index) {
+                                setState(() => _currentBannerIndex = index);
+                              },
+                              itemCount: _banners.length,
+                              itemBuilder: (context, index) {
+                                final banner = _banners[index];
+                                final bannerImagePath =
+                                    banner['image_path'] ??
+                                    'assets/img/main.png';
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 30,
+                                  ),
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 15,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    image: DecorationImage(
+                                      image: bannerImagePath.startsWith('http')
+                                          ? NetworkImage(bannerImagePath)
+                                          : AssetImage(bannerImagePath)
+                                                as ImageProvider,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
 
-                          // ═══════════════════════════════════════════════════
-                          // البانرات
-                          // ═══════════════════════════════════════════════════
-                          if (_banners.isNotEmpty) ...[
-                            SizedBox(
-                              height: 160,
-                              child: PageView.builder(
-                                controller: _bannerController,
-                                onPageChanged: (index) {
-                                  setState(() => _currentBannerIndex = index);
-                                },
-                                itemCount: _banners.length,
-                                itemBuilder: (context, index) {
-                                  final banner = _banners[index];
-                                  final bannerImagePath =
-                                      banner['image_path'] ??
-                                      'assets/img/main.png';
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 30,
-                                    ),
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 15,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(16),
-                                      image: DecorationImage(
-                                        image:
-                                            bannerImagePath.startsWith('http')
-                                                ? NetworkImage(bannerImagePath)
-                                                : AssetImage(bannerImagePath)
-                                                    as ImageProvider,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-
-                            // النقاط
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(
-                                _banners.length,
-                                (index) => Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  width: _currentBannerIndex == index ? 20 : 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _currentBannerIndex == index
-                                            ? AppColors.primaryColor
-                                            : Colors.grey[300],
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
+                          // النقاط
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(
+                              _banners.length,
+                              (index) => Container(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                width: _currentBannerIndex == index ? 20 : 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: _currentBannerIndex == index
+                                      ? AppColors.primaryColor
+                                      : Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                          ],
+                          ),
+                          const SizedBox(height: 20),
+                        ],
 
-                          // ═══════════════════════════════════════════════════
-                          // البارتات (الأقسام)
-                          // ═══════════════════════════════════════════════════
-                          ..._parts.map((part) {
-                            final items =
-                                part['items'] as List<Map<String, dynamic>>;
-                            if (items.isEmpty) return const SizedBox.shrink();
+                        // ═══════════════════════════════════════════════════
+                        // البارتات (الأقسام)
+                        // ═══════════════════════════════════════════════════
+                        ..._parts.map((part) {
+                          final items =
+                              part['items'] as List<Map<String, dynamic>>;
+                          if (items.isEmpty) return const SizedBox.shrink();
 
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // عنوان البارت
-                                Padding(
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // عنوان البارت
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 15,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      height: 35,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                      ),
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: Colors.transparent,
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.3),
+                                          width: 1.5,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.white.withOpacity(
+                                              0.25,
+                                            ),
+                                            blurRadius: 8,
+                                            spreadRadius: 0,
+                                            offset: const Offset(0, 0),
+                                          ),
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.1,
+                                            ),
+                                            blurRadius: 4,
+                                            spreadRadius: -1,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        part['name'] ?? '',
+                                        style: GoogleFonts.cairo(
+                                          color: AppColors.primaryColor,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    TextBubbleButton(
+                                      text: 'عرض الكل',
+                                      onTap: () {
+                                        Get.to(
+                                          () => PartItemsScreen(
+                                            partName: part['name'] ?? '',
+                                            items: items,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              // قائمة المنتجات الأفقية
+                              SizedBox(
+                                height: 240,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 15,
                                   ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Container(
-                                        height: 35,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 14,
-                                        ),
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: Colors.transparent,
-                                          borderRadius: BorderRadius.circular(18),
-                                          border: Border.all(
-                                            color: Colors.white.withOpacity(0.3),
-                                            width: 1.5,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.white.withOpacity(0.25),
-                                              blurRadius: 8,
-                                              spreadRadius: 0,
-                                              offset: const Offset(0, 0),
-                                            ),
-                                            BoxShadow(
-                                              color: Colors.black.withOpacity(0.1),
-                                              blurRadius: 4,
-                                              spreadRadius: -1,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Text(
-                                          part['name'] ?? '',
-                                          style: GoogleFonts.cairo(
-                                            color: AppColors.primaryColor,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
+                                  itemCount: items.length,
+                                  itemBuilder: (context, index) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(left: 12),
+                                      child: ProductCard(
+                                        item: items[index],
+                                        width: 150,
+                                        imageHeight: 120,
                                       ),
-                                      TextBubbleButton(
-                                        text: 'عرض الكل',
-                                        onTap: () {
-                                          Get.to(
-                                            () => PartItemsScreen(
-                                              partName: part['name'] ?? '',
-                                              items: items,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
+                                    );
+                                  },
                                 ),
+                              ),
 
-                                const SizedBox(height: 8),
-
-                                // قائمة المنتجات الأفقية
-                                SizedBox(
-                                  height: 240,
-                                  child: ListView.builder(
-                                    scrollDirection: Axis.horizontal,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 15,
-                                    ),
-                                    itemCount: items.length,
-                                    itemBuilder: (context, index) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 12,
-                                        ),
-                                        child: ProductCard(
-                                          item: items[index],
-                                          width: 150,
-                                          imageHeight: 120,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-
-                                const SizedBox(height: 20),
-                              ],
-                            );
-                          }),
-                        ],
-                      ),
+                              const SizedBox(height: 20),
+                            ],
+                          );
+                        }),
+                      ],
                     ),
                   ),
                 ),
+              ),
       ),
     );
   }

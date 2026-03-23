@@ -19,7 +19,7 @@ class SupabaseConfig {
   static const String supabaseUrl = 'https://ibwawjjqewuikmmnxqgo.supabase.co';
 
   static const String supabaseAnonKey =
-      'sb_publishable_UDC3-1lmARJgip7zcwAYtg_jE2MMral';
+      'sb_publishable_UDC3-1lmARJgip7zcwAYtg_jE2MMral'; 
 
   static const String shopId = '550e8400-e29b-41d4-a716-446655440001';
 }

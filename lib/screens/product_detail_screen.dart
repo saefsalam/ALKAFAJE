@@ -54,28 +54,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (_currentCartId != null) return _currentCartId;
 
     try {
-      final existingCart =
-          await _supabase
-              .from('carts')
-              .select('id')
-              .eq('shop_id', SupabaseConfig.shopId)
-              .eq('customer_id', _currentCustomerId!)
-              .maybeSingle();
+      final existingCart = await _supabase
+          .from('carts')
+          .select('id')
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('customer_id', _currentCustomerId!)
+          .maybeSingle();
 
       if (existingCart != null) {
         _currentCartId = existingCart['id'];
         return _currentCartId;
       }
 
-      final newCart =
-          await _supabase
-              .from('carts')
-              .insert({
-                'shop_id': SupabaseConfig.shopId,
-                'customer_id': _currentCustomerId,
-              })
-              .select('id')
-              .single();
+      final newCart = await _supabase
+          .from('carts')
+          .insert({
+            'shop_id': SupabaseConfig.shopId,
+            'customer_id': _currentCustomerId,
+          })
+          .select('id')
+          .single();
 
       _currentCartId = newCart['id'];
       return _currentCartId;
@@ -96,13 +94,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         throw Exception('لا يمكن الحصول على السلة');
       }
 
-      final existingItem =
-          await _supabase
-              .from('cart_items')
-              .select('id, quantity')
-              .eq('cart_id', cartId)
-              .eq('item_id', widget.item.id)
-              .maybeSingle();
+      final existingItem = await _supabase
+          .from('cart_items')
+          .select('id, quantity')
+          .eq('cart_id', cartId)
+          .eq('item_id', widget.item.id)
+          .maybeSingle();
 
       if (existingItem != null) {
         final newQuantity = existingItem['quantity'] + _quantity;
@@ -185,9 +182,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final images = widget.item.images.map((img) => img.imagePath).toList();
     Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
-        builder:
-            (context) =>
-                ImageGalleryScreen(images: images, initialIndex: initialIndex),
+        builder: (context) =>
+            ImageGalleryScreen(images: images, initialIndex: initialIndex),
       ),
     );
   }
@@ -276,25 +272,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     onTap: () => _openImageGallery(index),
                                     child: Container(
                                       color: Colors.white,
-                                      child: Image.asset(
+                                      child: Image.network(
                                         widget.item.images[index].imagePath,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (
-                                          context,
-                                          error,
-                                          stackTrace,
-                                        ) {
-                                          return Container(
-                                            color: AppColors.primaryColor
-                                                .withOpacity(0.1),
-                                            child: Icon(
-                                              Icons.image,
-                                              size: 80,
-                                              color: AppColors.primaryColor
-                                                  .withOpacity(0.3),
-                                            ),
-                                          );
-                                        },
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                              return Container(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.1),
+                                                child: Icon(
+                                                  Icons.image,
+                                                  size: 80,
+                                                  color: AppColors.primaryColor
+                                                      .withOpacity(0.3),
+                                                ),
+                                              );
+                                            },
                                       ),
                                     ),
                                   );
@@ -318,26 +311,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                         ),
                                       ],
                                     ),
-                                    child:
-                                        _isCheckingFavorite
-                                            ? SizedBox(
-                                              width: 24,
-                                              height: 24,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: AppColors.primaryColor,
-                                              ),
-                                            )
-                                            : Icon(
-                                              _isFavorite
-                                                  ? Icons.favorite
-                                                  : Icons.favorite_border,
-                                              color:
-                                                  _isFavorite
-                                                      ? Colors.red
-                                                      : AppColors.primaryColor,
-                                              size: 24,
+                                    child: _isCheckingFavorite
+                                        ? SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: AppColors.primaryColor,
                                             ),
+                                          )
+                                        : Icon(
+                                            _isFavorite
+                                                ? Icons.favorite
+                                                : Icons.favorite_border,
+                                            color: _isFavorite
+                                                ? Colors.red
+                                                : AppColors.primaryColor,
+                                            size: 24,
+                                          ),
                                   ),
                                 ),
                               ),
@@ -355,21 +346,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                         margin: const EdgeInsets.symmetric(
                                           horizontal: 4,
                                         ),
-                                        width:
-                                            _currentImageIndex == index
-                                                ? 24
-                                                : 8,
+                                        width: _currentImageIndex == index
+                                            ? 24
+                                            : 8,
                                         height: 8,
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(
                                             4,
                                           ),
-                                          color:
-                                              _currentImageIndex == index
-                                                  ? AppColors.primaryColor
-                                                  : Colors.white.withOpacity(
-                                                    0.6,
-                                                  ),
+                                          color: _currentImageIndex == index
+                                              ? AppColors.primaryColor
+                                              : Colors.white.withOpacity(0.6),
                                         ),
                                       ),
                                     ),
@@ -679,10 +666,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           },
                           icon: Icon(
                             Icons.remove,
-                            color:
-                                _quantity > 1
-                                    ? AppColors.primaryColor
-                                    : Colors.grey,
+                            color: _quantity > 1
+                                ? AppColors.primaryColor
+                                : Colors.grey,
                           ),
                         ),
                         Text(
@@ -718,34 +704,33 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                         elevation: 5,
                       ),
-                      child:
-                          _isAddingToCart
-                              ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                              : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.shopping_cart,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    'إضافة إلى السلة',
-                                    style: GoogleFonts.cairo(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
+                      child: _isAddingToCart
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
                               ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.shopping_cart,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'إضافة إلى السلة',
+                                  style: GoogleFonts.cairo(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                     ),
                   ),
                 ],
@@ -844,7 +829,7 @@ class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
                 minScale: 0.5,
                 maxScale: 4.0,
                 child: Center(
-                  child: Image.asset(
+                  child: Image.network(
                     widget.images[index],
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
@@ -928,10 +913,9 @@ class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
                       height: 8,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(4),
-                        color:
-                            _currentIndex == index
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.5),
+                        color: _currentIndex == index
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.5),
                       ),
                     ),
                   ),
