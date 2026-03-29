@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -120,14 +121,18 @@ class AuthService {
 //   constraint whatsapp_otps_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete CASCADE,
 //   constraint whatsapp_otps_shop_id_fkey foreign KEY (shop_id) references shops (id) on delete CASCADE
 // ) TABLESPACE pg_default;
+      final otp = _generateOtp();
       await _supabase.from('whatsapp_otps').insert({
         'phone': phone,
         'customer_id': result['id'],
         'shop_id': DEFAULT_SHOP_ID,
-        'otp': '0000', // يمكنك توليد OTP حقيقي هنا
+        'otp': otp,
         'is_sent': false,
-        'expires_at': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
+        'expires_at':
+            DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
       });
+
+      print('📱 تم توليد OTP: $otp');
 
       print('✅ تم إنشاء سجل العميل بنجاح - customer_id: ${result['id']}');
       return result['id'] as int;
@@ -237,7 +242,10 @@ class AuthService {
           .maybeSingle();
 
       if (response == null) {
-        return {'success': false, 'message': 'لم يتم العثور على رمز تحقق. أعد الإرسال'};
+        return {
+          'success': false,
+          'message': 'لم يتم العثور على رمز تحقق. أعد الإرسال'
+        };
       }
 
       // التحقق من انتهاء الصلاحية
@@ -255,16 +263,15 @@ class AuthService {
       // تحديث عدد المحاولات
       await _supabase
           .from('whatsapp_otps')
-          .update({'attempts': attempts + 1})
-          .eq('id', response['id']);
+          .update({'attempts': attempts + 1}).eq('id', response['id']);
 
       // مقارنة الرمز
       if (response['otp'] == otp) {
         // تحديث حالة التحقق
         await _supabase
             .from('whatsapp_otps')
-            .update({'verified_at': DateTime.now().toIso8601String()})
-            .eq('id', response['id']);
+            .update({'verified_at': DateTime.now().toIso8601String()}).eq(
+                'id', response['id']);
 
         print('✅ تم التحقق من رمز OTP بنجاح');
         return {'success': true, 'message': 'تم التحقق بنجاح'};
@@ -287,7 +294,7 @@ class AuthService {
     required int customerId,
   }) async {
     try {
-      // توليد رمز OTP جديد (4 أرقام)
+      // توليد رمز OTP جديد (5 أرقام)
       final newOtp = _generateOtp();
 
       // إدراج رمز جديد في قاعدة البيانات
@@ -297,7 +304,8 @@ class AuthService {
         'shop_id': DEFAULT_SHOP_ID,
         'otp': newOtp,
         'is_sent': false,
-        'expires_at': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
+        'expires_at':
+            DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
       });
 
       print('✅ تم إنشاء رمز OTP جديد: $newOtp');
@@ -312,13 +320,11 @@ class AuthService {
     }
   }
 
-  /// توليد رمز OTP عشوائي (4 أرقام)
+  /// توليد رمز OTP عشوائي (5 أرقام)
   static String _generateOtp() {
-    // TODO: في الإنتاج استخدم رمز عشوائي حقيقي
-    // import 'dart:math';
-    // final random = Random();
-    // return (1000 + random.nextInt(9000)).toString();
-    return '0000'; // رمز مؤقت للتطوير
+    final random = Random();
+    // توليد رقم عشوائي من 10000 إلى 99999 (5 أرقام)
+    return (10000 + random.nextInt(90000)).toString();
   }
 
   /// التسجيل عبر رقم الهاتف (يُنشئ حساب Supabase Auth + سجل customer + OTP)
@@ -343,7 +349,8 @@ class AuthService {
       }
 
       // إنشاء حساب في Supabase Auth (بريد وهمي + كلمة سر = رقم الهاتف)
-      final email = '${phone.replaceAll('+', '').replaceAll(' ', '')}@phone.local';
+      final email =
+          '${phone.replaceAll('+', '').replaceAll(' ', '')}@phone.local';
       final password = phone.replaceAll('+', '').replaceAll(' ', '');
 
       final response = await _supabase.auth.signUp(
@@ -416,7 +423,8 @@ class AuthService {
       }
 
       // تسجيل الدخول عبر البريد الوهمي
-      final email = '${phone.replaceAll('+', '').replaceAll(' ', '')}@phone.local';
+      final email =
+          '${phone.replaceAll('+', '').replaceAll(' ', '')}@phone.local';
       final password = phone.replaceAll('+', '').replaceAll(' ', '');
 
       final response = await _supabase.auth.signInWithPassword(
@@ -436,8 +444,11 @@ class AuthService {
         'shop_id': DEFAULT_SHOP_ID,
         'otp': otp,
         'is_sent': false,
-        'expires_at': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
+        'expires_at':
+            DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
       });
+
+      print('📱 تم توليد OTP لتسجيل الدخول: $otp');
 
       return {
         'success': true,

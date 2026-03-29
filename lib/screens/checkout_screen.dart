@@ -3,7 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import '../utls/constants.dart';
 import '../services/order_service.dart';
 import '../services/auth_service.dart';
+import '../services/location_service.dart';
+import '../models/customer_location_model.dart';
 import 'orders/order_detail_screen.dart';
+import 'addresses/select_location_bottom_sheet.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // شاشة إتمام الطلب (Checkout)
@@ -28,8 +31,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // المتغيرات
   // ═══════════════════════════════════════════════════════════════════════════
 
-  List<Map<String, dynamic>> _deliveryZones = [];
-  Map<String, dynamic>? _selectedZone;
+  CustomerLocation? _selectedLocation;
   bool _isLoadingZones = true;
   bool _isSubmitting = false;
 
@@ -54,34 +56,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _loadData() async {
-    // تحميل مناطق التوصيل ومعلومات العميل بالتوازي
-    final results = await Future.wait([
-      OrderService.getDeliveryZones(),
-      AuthService.getCustomerInfo(),
-    ]);
+    // الحصول على معلومات العميل أولاً
+    final customerInfo = await AuthService.getCustomerInfo();
+    if (customerInfo == null) {
+      if (mounted) {
+        _showMessage('الرجاء تسجيل الدخول أولاً', isError: true);
+      }
+      return;
+    }
 
-    final zones = results[0] as List<Map<String, dynamic>>;
-    final customerInfo = results[1] as Map<String, dynamic>?;
+    final customerId = customerInfo['id'] as int;
+
+    // تحميل الموقع الرئيسي
+    final defaultLocation = await LocationService.getDefaultLocation(customerId: customerId);
 
     if (mounted) {
       setState(() {
-        _deliveryZones = zones;
+        _selectedLocation = defaultLocation;
         _isLoadingZones = false;
 
-        // ملء العنوان تلقائياً إذا كان موجوداً
-        if (customerInfo != null) {
-          if (customerInfo['address'] != null) {
-            _addressController.text = customerInfo['address'];
-          }
-          // اختيار المنطقة تلقائياً إذا كانت محفوظة
-          if (customerInfo['city'] != null && zones.isNotEmpty) {
-            final existingZone = zones.where(
-              (z) => z['city'] == customerInfo['city'],
-            );
-            if (existingZone.isNotEmpty) {
-              _selectedZone = existingZone.first;
-            }
-          }
+        // ملء العنوان من الموقع
+        if (defaultLocation != null) {
+          _addressController.text = defaultLocation.displayText;
+        } else if (customerInfo['address'] != null) {
+          // استخدام العنوان القديم كبديل
+          _addressController.text = customerInfo['address'];
         }
       });
     }
@@ -91,23 +90,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // الحسابات
   // ═══════════════════════════════════════════════════════════════════════════
 
-  double get _deliveryFee {
-    if (_selectedZone == null) return 0;
-    return (_selectedZone!['price'] as num).toDouble();
-  }
-
-  double get _total => widget.subtotal + _deliveryFee;
+  double get _total => widget.subtotal;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // إنشاء الطلب
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _submitOrder() async {
-    // التحقق من اختيار منطقة التوصيل
-    if (_selectedZone == null) {
-      _showMessage('الرجاء اختيار منطقة التوصيل', isError: true);
-      return;
-    }
 
     // تأكيد الطلب
     final confirmed = await showDialog<bool>(
@@ -132,7 +121,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 16),
             _buildSummaryRow('المنتجات', '${widget.subtotal.toStringAsFixed(0)} د.ع'),
-            _buildSummaryRow('التوصيل', '${_deliveryFee.toStringAsFixed(0)} د.ع'),
             const Divider(height: 16),
             _buildSummaryRow(
               'الإجمالي',
@@ -172,10 +160,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() => _isSubmitting = true);
 
     final result = await OrderService.createOrder(
-      city: _selectedZone!['city'] as String,
-      deliveryFee: _deliveryFee,
       note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+      locationId: _selectedLocation?.id, // إرسال location_id مع الطلب
     );
 
     setState(() => _isSubmitting = false);
@@ -317,6 +304,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  // فتح Bottom Sheet لاختيار/إضافة الموقع
+  Future<void> _selectLocation() async {
+    final result = await showModalBottomSheet<CustomerLocation>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: false,
+      builder: (context) => SelectLocationBottomSheet(
+        currentLocation: _selectedLocation,
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _selectedLocation = result;
+        _addressController.text = result.displayText;
+      });
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // الواجهة
   // ═══════════════════════════════════════════════════════════════════════════
@@ -358,10 +365,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                   const SizedBox(height: 20),
 
-                  // ─── منطقة التوصيل ───
-                  _buildSectionTitle('منطقة التوصيل', Icons.location_on_outlined),
+                  // ─── موقع التوصيل ───
+                  _buildSectionTitle('موقع التوصيل', Icons.my_location_outlined),
                   const SizedBox(height: 8),
-                  _buildDeliveryZoneSelector(),
+                  _buildLocationSelector(),
 
                   const SizedBox(height: 20),
 
@@ -487,134 +494,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // ─── اختيار منطقة التوصيل ─────────────────────────────────────────────
-
-  Widget _buildDeliveryZoneSelector() {
-    if (_deliveryZones.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.orange[50],
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.orange.withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange[700]),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'لا توجد مناطق توصيل متاحة حالياً',
-                style: GoogleFonts.cairo(color: Colors.orange[800], fontSize: 14),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: _deliveryZones.map((zone) {
-          final isSelected = _selectedZone?['id'] == zone['id'];
-          final price = (zone['price'] as num).toDouble();
-
-          return InkWell(
-            onTap: () {
-              setState(() => _selectedZone = zone);
-            },
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppColors.primaryColor.withOpacity(0.05)
-                    : Colors.transparent,
-                border: isSelected
-                    ? Border.all(color: AppColors.primaryColor.withOpacity(0.3))
-                    : null,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  // Radio
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected
-                            ? AppColors.primaryColor
-                            : Colors.grey[400]!,
-                        width: 2,
-                      ),
-                    ),
-                    child: isSelected
-                        ? Center(
-                            child: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.primaryColor,
-                              ),
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-                  // اسم المنطقة
-                  Expanded(
-                    child: Text(
-                      zone['city'] ?? '',
-                      style: GoogleFonts.cairo(
-                        fontSize: 15,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color: isSelected
-                            ? AppColors.primaryColor
-                            : Colors.black87,
-                      ),
-                    ),
-                  ),
-                  // سعر التوصيل
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: price == 0
-                          ? Colors.green.withOpacity(0.1)
-                          : AppColors.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      price == 0 ? 'مجاني' : '${price.toStringAsFixed(0)} د.ع',
-                      style: GoogleFonts.cairo(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: price == 0 ? Colors.green : AppColors.primaryColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   // ─── حقل العنوان ───────────────────────────────────────────────────────
 
   Widget _buildAddressField() {
@@ -705,15 +584,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             'المنتجات',
             '${widget.subtotal.toStringAsFixed(0)} د.ع',
           ),
-          const SizedBox(height: 8),
-          _buildSummaryRow(
-            'التوصيل',
-            _selectedZone == null
-                ? 'اختر المنطقة'
-                : (_deliveryFee == 0
-                    ? 'مجاني'
-                    : '${_deliveryFee.toStringAsFixed(0)} د.ع'),
-          ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Divider(),
@@ -756,7 +626,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // ─── زر تأكيد الطلب ──────────────────────────────────────────────────
 
   Widget _buildSubmitButton() {
-    final canSubmit = _selectedZone != null && !_isSubmitting;
+    final canSubmit = !_isSubmitting;
 
     return SizedBox(
       height: 56,
@@ -795,6 +665,145 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ],
               ),
       ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // قسم اختيار الموقع
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildLocationSelector() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: _selectedLocation == null
+          ? InkWell(
+              onTap: _selectLocation,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.add_location_alt,
+                    color: AppColors.primaryColor,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'إضافة موقع التوصيل',
+                          style: GoogleFonts.cairo(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primaryColor,
+                          ),
+                        ),
+                        Text(
+                          'اختر من المواقع المحفوظة أو أضف جديد',
+                          style: GoogleFonts.cairo(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_left,
+                    color: Colors.grey[400],
+                  ),
+                ],
+              ),
+            )
+          : Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _selectedLocation!.isDefault
+                        ? AppColors.primaryColor
+                        : AppColors.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    _selectedLocation!.isDefault
+                        ? Icons.home
+                        : Icons.location_on,
+                    color: _selectedLocation!.isDefault
+                        ? Colors.white
+                        : AppColors.primaryColor,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _selectedLocation!.name,
+                              style: GoogleFonts.cairo(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_selectedLocation!.isDefault) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryColor,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'رئيسي',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _selectedLocation!.displayText,
+                        style: GoogleFonts.cairo(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.edit_location_alt,
+                    color: AppColors.primaryColor,
+                  ),
+                  onPressed: _selectLocation,
+                  tooltip: 'تغيير الموقع',
+                ),
+              ],
+            ),
     );
   }
 }

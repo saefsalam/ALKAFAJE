@@ -29,10 +29,10 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
-  // Controllers لكل خانة من خانات OTP (4 خانات)
+  // Controllers لكل خانة من خانات OTP (5 خانات)
   final List<TextEditingController> _otpControllers =
-      List.generate(4, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
+      List.generate(5, (_) => TextEditingController());
+  final List<FocusNode> _focusNodes = List.generate(5, (_) => FocusNode());
 
   bool _isLoading = false;
   bool _isResending = false;
@@ -60,9 +60,11 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
-    _shakeAnimation = Tween<double>(begin: 0, end: 10).chain(
-      CurveTween(curve: Curves.elasticIn),
-    ).animate(_shakeController);
+    _shakeAnimation = Tween<double>(begin: 0, end: 10)
+        .chain(
+          CurveTween(curve: Curves.elasticIn),
+        )
+        .animate(_shakeController);
   }
 
   @override
@@ -90,15 +92,14 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     });
   }
 
-  String get _otpCode =>
-      _otpControllers.map((c) => c.text).join();
+  String get _otpCode => _otpControllers.map((c) => c.text).join();
 
   // التحقق من الرمز
   Future<void> _verifyOtp() async {
     final code = _otpCode;
 
-    if (code.length != 4) {
-      _showError('الرجاء إدخال الرمز كاملاً (4 أرقام)');
+    if (code.length != 5) {
+      _showError('الرجاء إدخال الرمز كاملاً (5 أرقام)');
       return;
     }
 
@@ -151,7 +152,8 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
         _showError(errorMsg);
 
         if (_attempts >= _maxAttempts) {
-          _showError('لقد تجاوزت عدد المحاولات المسموحة (${ _maxAttempts} محاولات)');
+          _showError(
+              'لقد تجاوزت عدد المحاولات المسموحة (${_maxAttempts} محاولات)');
         }
       }
     } catch (e) {
@@ -293,7 +295,8 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
 
               // رقم الهاتف
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: AppColors.primaryColor.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(20),
@@ -325,10 +328,10 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                   textDirection: TextDirection.ltr,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(4, (index) {
+                    children: List.generate(5, (index) {
                       return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        width: 60,
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        width: 55,
                         height: 65,
                         child: TextFormField(
                           controller: _otpControllers[index],
@@ -378,13 +381,13 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                           ),
                           onChanged: (value) {
                             setState(() {}); // لتحديث لون الحقول
-                            if (value.isNotEmpty && index < 3) {
+                            if (value.isNotEmpty && index < 4) {
                               _focusNodes[index + 1].requestFocus();
                             }
-                            // التحقق التلقائي عند إكمال 4 أرقام
-                            if (index == 3 && value.isNotEmpty) {
+                            // التحقق التلقائي عند إكمال 5 أرقام
+                            if (index == 4 && value.isNotEmpty) {
                               final code = _otpCode;
-                              if (code.length == 4) {
+                              if (code.length == 5) {
                                 _verifyOtp();
                               }
                             }
@@ -393,8 +396,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                             _otpControllers[index].selection =
                                 TextSelection.fromPosition(
                               TextPosition(
-                                  offset:
-                                      _otpControllers[index].text.length),
+                                  offset: _otpControllers[index].text.length),
                             );
                           },
                         ),

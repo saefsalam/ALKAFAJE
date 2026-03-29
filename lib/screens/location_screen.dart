@@ -1,28 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../utls/constants.dart';
+import '../services/location_service.dart';
+import '../services/auth_service.dart';
 import '../widget/bubble_button.dart';
 
-// نموذج لحفظ الموقع
-class SavedLocation {
-  final String name;
-  final String notes;
-  final LatLng position;
-  final DateTime savedAt;
-
-  SavedLocation({
-    required this.name,
-    required this.notes,
-    required this.position,
-    required this.savedAt,
-  });
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// شاشة إضافة موقع جديد - تصميم محسّن
+// ═══════════════════════════════════════════════════════════════════════════
 
 class LocationScreen extends StatefulWidget {
   const LocationScreen({super.key});
@@ -32,131 +22,103 @@ class LocationScreen extends StatefulWidget {
 }
 
 class _LocationScreenState extends State<LocationScreen> {
-  final TextEditingController _locationNameController = TextEditingController();
-  final TextEditingController _notesController = TextEditingController();
-
+  // ─── Controllers ────────────────────────────────────────────────────────
   final MapController _mapController = MapController();
-  LatLng _currentPosition = LatLng(33.3152, 44.3661); // بغداد
+  final _formKey = GlobalKey<FormState>();
+  
+  // Required fields
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _fullAddressController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  
+  // Optional fields
+  final TextEditingController _streetController = TextEditingController();
+  final TextEditingController _buildingController = TextEditingController();
+  final TextEditingController _floorController = TextEditingController();
+  final TextEditingController _apartmentController = TextEditingController();
+  final TextEditingController _landmarkController = TextEditingController();
+
+  // ─── State ──────────────────────────────────────────────────────────────
+  LatLng _currentPosition = const LatLng(33.3152, 44.3661); // بغداد
   LatLng? _selectedPosition;
-  String _selectedLocationName = '';
-  bool isLocationSelected = false;
+  bool _isLocationConfirmed = false;
   bool _isLoadingLocation = false;
-
-  // قائمة المواقع المحفوظة
-  final List<SavedLocation> _savedLocations = [];
-
-  @override
-  void initState() {
-    super.initState();
-    // لا نطلب الموقع تلقائياً لتجنب مشاكل Windows
-  }
+  bool _isSaving = false;
+  String _locationName = '';
 
   @override
   void dispose() {
-    _locationNameController.dispose();
-    _notesController.dispose();
+    _nameController.dispose();
+    _fullAddressController.dispose();
+    _phoneController.dispose();
+    _streetController.dispose();
+    _buildingController.dispose();
+    _floorController.dispose();
+    _apartmentController.dispose();
+    _landmarkController.dispose();
     super.dispose();
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // الحصول على الموقع الحالي
+  // ═══════════════════════════════════════════════════════════════════════════
   Future<void> _getCurrentLocation() async {
-    setState(() {
-      _isLoadingLocation = true;
-    });
+    setState(() => _isLoadingLocation = true);
 
     try {
       // للتطوير على Windows - استخدام موقع افتراضي (بغداد)
       if (Theme.of(context).platform == TargetPlatform.windows) {
-        // محاكاة تأخير للحصول على الموقع
         await Future.delayed(const Duration(seconds: 1));
 
         setState(() {
-          // يمكنك تغيير الموقع الافتراضي هنا
-          _currentPosition = LatLng(33.3152, 44.3661); // بغداد
+          _currentPosition = const LatLng(33.3152, 44.3661);
           _selectedPosition = _currentPosition;
-          isLocationSelected = true;
           _isLoadingLocation = false;
         });
 
         _mapController.move(_currentPosition, 15);
         await _getAddressFromLatLng(_currentPosition);
 
-        Get.snackbar(
-          'تم تحديد الموقع',
-          'تم استخدام موقع افتراضي (Windows)',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.blue,
-          colorText: Colors.white,
-          margin: const EdgeInsets.all(16),
-          borderRadius: 12,
-          icon: const Icon(Icons.info, color: Colors.white),
-          duration: const Duration(seconds: 3),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تم استخدام موقع افتراضي (Windows)',
+                style: GoogleFonts.cairo(),
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: Colors.blue,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
         return;
       }
 
       // للأجهزة الحقيقية (Android/iOS)
-      // التحقق من تفعيل خدمة الموقع
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        setState(() {
-          _isLoadingLocation = false;
-        });
-        Get.snackbar(
-          'خدمة الموقع معطلة',
-          'يرجى تفعيل GPS من إعدادات الجهاز',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-          margin: const EdgeInsets.all(16),
-          borderRadius: 12,
-          icon: const Icon(Icons.location_off, color: Colors.white),
-          duration: const Duration(seconds: 4),
-        );
+        setState(() => _isLoadingLocation = false);
+        _showMessage('يرجى تفعيل GPS من إعدادات الجهاز', isError: true);
         return;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          setState(() {
-            _isLoadingLocation = false;
-          });
-          Get.snackbar(
-            'تم رفض الصلاحية',
-            'يرجى السماح بالوصول إلى الموقع',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.orange,
-            colorText: Colors.white,
-            margin: const EdgeInsets.all(16),
-            borderRadius: 12,
-            icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
-            duration: const Duration(seconds: 4),
-          );
+          setState(() => _isLoadingLocation = false);
+          _showMessage('يرجى السماح بالوصول إلى الموقع', isError: true);
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          _isLoadingLocation = false;
-        });
-        Get.snackbar(
-          'الصلاحية محظورة',
-          'يرجى تفعيل صلاحيات الموقع من إعدادات التطبيق',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          margin: const EdgeInsets.all(16),
-          borderRadius: 12,
-          icon: const Icon(Icons.block, color: Colors.white),
-          duration: const Duration(seconds: 4),
-        );
+        setState(() => _isLoadingLocation = false);
+        _showMessage('يرجى تفعيل صلاحيات الموقع من الإعدادات', isError: true);
         return;
       }
 
-      // الحصول على الموقع مع timeout
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
@@ -165,1175 +127,815 @@ class _LocationScreenState extends State<LocationScreen> {
       setState(() {
         _currentPosition = LatLng(position.latitude, position.longitude);
         _selectedPosition = _currentPosition;
-        isLocationSelected = true;
         _isLoadingLocation = false;
       });
 
       _mapController.move(_currentPosition, 15);
       await _getAddressFromLatLng(_currentPosition);
 
-      Get.snackbar(
-        'تم تحديد الموقع',
-        'تم الحصول على موقعك الحالي بنجاح',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        margin: const EdgeInsets.all(16),
-        borderRadius: 12,
-        icon: const Icon(Icons.check_circle, color: Colors.white),
-        duration: const Duration(seconds: 2),
-      );
-    } on TimeoutException {
-      setState(() {
-        _isLoadingLocation = false;
-      });
-      Get.snackbar(
-        'انتهت المهلة',
-        'استغرق الحصول على الموقع وقتاً طويلاً. تأكد من اتصال GPS',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
-        margin: const EdgeInsets.all(16),
-        borderRadius: 12,
-        icon: const Icon(Icons.timer_off, color: Colors.white),
-        duration: const Duration(seconds: 4),
-      );
-    } on LocationServiceDisabledException {
-      setState(() {
-        _isLoadingLocation = false;
-      });
-      Get.snackbar(
-        'خدمة الموقع معطلة',
-        'يرجى تفعيل GPS من إعدادات الجهاز',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
-        margin: const EdgeInsets.all(16),
-        borderRadius: 12,
-        icon: const Icon(Icons.location_off, color: Colors.white),
-        duration: const Duration(seconds: 4),
-      );
-    } on PermissionDeniedException {
-      setState(() {
-        _isLoadingLocation = false;
-      });
-      Get.snackbar(
-        'تم رفض الصلاحية',
-        'لا يمكن الوصول إلى موقعك بدون الصلاحية',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        margin: const EdgeInsets.all(16),
-        borderRadius: 12,
-        icon: const Icon(Icons.block, color: Colors.white),
-        duration: const Duration(seconds: 4),
-      );
-    } catch (e) {
-      setState(() {
-        _isLoadingLocation = false;
-      });
-
-      // إذا كان الخطأ MissingPluginException على Windows
-      if (e.toString().contains('MissingPluginException') ||
-          e.toString().contains('No implementation found')) {
-        // استخدام موقع افتراضي
-        setState(() {
-          _currentPosition = LatLng(33.3152, 44.3661); // بغداد
-          _selectedPosition = _currentPosition;
-          isLocationSelected = true;
-        });
-        _mapController.move(_currentPosition, 15);
-        await _getAddressFromLatLng(_currentPosition);
-
-        Get.snackbar(
-          'تنبيه',
-          'تم استخدام موقع افتراضي (المكتبة لا تدعم Windows)',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.blue,
-          colorText: Colors.white,
-          margin: const EdgeInsets.all(16),
-          borderRadius: 12,
-          icon: const Icon(Icons.info, color: Colors.white),
-          duration: const Duration(seconds: 4),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تم تحديد موقعك الحالي بنجاح',
+              style: GoogleFonts.cairo(),
+              textAlign: TextAlign.center,
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
         );
-        return;
       }
+    } catch (e) {
+      setState(() => _isLoadingLocation = false);
 
-      String errorMessage = 'حدث خطأ غير متوقع';
-      if (e.toString().contains('PERMISSION')) {
-        errorMessage = 'مشكلة في صلاحيات الموقع';
-      } else if (e.toString().contains('network') ||
-          e.toString().contains('internet')) {
-        errorMessage = 'تحقق من اتصال الإنترنت';
-      } else if (e.toString().contains('timeout')) {
-        errorMessage = 'انتهت المهلة الزمنية';
-      }
+      // استخدام موقع افتراضي في حالة الخطأ
+      setState(() {
+        _currentPosition = const LatLng(33.3152, 44.3661);
+        _selectedPosition = _currentPosition;
+      });
+      _mapController.move(_currentPosition, 15);
+      await _getAddressFromLatLng(_currentPosition);
 
-      Get.snackbar(
-        'خطأ',
-        errorMessage,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        margin: const EdgeInsets.all(16),
-        borderRadius: 12,
-        icon: const Icon(Icons.error, color: Colors.white),
-        duration: const Duration(seconds: 4),
-      );
-
-      // طباعة الخطأ للمطور
       debugPrint('خطأ في الحصول على الموقع: $e');
     }
   }
 
-  Future<String> _getLocationName(LatLng position) async {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // الحصول على اسم الموقع من الإحداثيات
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<void> _getAddressFromLatLng(LatLng position) async {
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
-      );
+      ).timeout(const Duration(seconds: 5));
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
-        String locationName = '';
+        String address = '';
 
         if (place.street != null && place.street!.isNotEmpty) {
-          locationName += place.street!;
+          address += place.street!;
         }
         if (place.subLocality != null && place.subLocality!.isNotEmpty) {
-          if (locationName.isNotEmpty) locationName += '، ';
-          locationName += place.subLocality!;
+          if (address.isNotEmpty) address += '، ';
+          address += place.subLocality!;
         }
         if (place.locality != null && place.locality!.isNotEmpty) {
-          if (locationName.isNotEmpty) locationName += '، ';
-          locationName += place.locality!;
-        }
-
-        return locationName.isNotEmpty ? locationName : 'موقع على الخريطة';
-      }
-      return 'موقع على الخريطة';
-    } catch (e) {
-      return 'موقع على الخريطة';
-    }
-  }
-
-  Future<void> _getAddressFromLatLng(LatLng position) async {
-    try {
-      List<Placemark> placemarks =
-          await placemarkFromCoordinates(
-            position.latitude,
-            position.longitude,
-          ).timeout(
-            const Duration(seconds: 5),
-            onTimeout: () {
-              debugPrint('انتهت مهلة الحصول على اسم الموقع');
-              return [];
-            },
-          );
-
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        String locationName = '';
-
-        // بناء اسم الموقع من المعلومات المتاحة
-        if (place.street != null && place.street!.isNotEmpty) {
-          locationName += place.street!;
-        }
-        if (place.subLocality != null && place.subLocality!.isNotEmpty) {
-          if (locationName.isNotEmpty) locationName += '، ';
-          locationName += place.subLocality!;
-        }
-        if (place.locality != null && place.locality!.isNotEmpty) {
-          if (locationName.isNotEmpty) locationName += '، ';
-          locationName += place.locality!;
-        }
-        if (place.country != null && place.country!.isNotEmpty) {
-          if (locationName.isNotEmpty) locationName += '، ';
-          locationName += place.country!;
+          if (address.isNotEmpty) address += '، ';
+          address += place.locality!;
         }
 
         setState(() {
-          _selectedLocationName = locationName.isNotEmpty
-              ? locationName
+          _locationName = address.isNotEmpty
+              ? address
               : 'موقع على الخريطة';
-          _locationNameController.text = _selectedLocationName;
-        });
-      } else {
-        setState(() {
-          _selectedLocationName =
-              'موقع على الخريطة (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
-          _locationNameController.text = _selectedLocationName;
+          // ملء الحقل تلقائياً
+          if (_fullAddressController.text.isEmpty) {
+            _fullAddressController.text = _locationName;
+          }
         });
       }
-    } on TimeoutException {
-      setState(() {
-        _selectedLocationName =
-            'موقع على الخريطة (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
-        _locationNameController.text = _selectedLocationName;
-      });
-      debugPrint('انتهت مهلة تحويل الإحداثيات إلى عنوان');
     } catch (e) {
       setState(() {
-        _selectedLocationName =
-            'موقع على الخريطة (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
-        _locationNameController.text = _selectedLocationName;
+        _locationName = 'موقع (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
       });
       debugPrint('خطأ في الحصول على اسم الموقع: $e');
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // عند الضغط على الخريطة
+  // ═══════════════════════════════════════════════════════════════════════════
   void _onMapTapped(TapPosition tapPosition, LatLng position) {
     setState(() {
       _selectedPosition = position;
-      isLocationSelected = true;
     });
     _getAddressFromLatLng(position);
   }
 
-  void _onMapLongPressed(TapPosition tapPosition, LatLng position) {
-    // عرض Bottom Sheet للتأكيد
-    Get.bottomSheet(
-      Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // أيقونة الموقع
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: AppColors.primaryColor.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.location_on,
-                color: AppColors.primaryColor,
-                size: 40,
-              ),
-            ),
-            const SizedBox(height: 20),
-            // العنوان
-            Text(
-              'تحديد الموقع',
-              style: GoogleFonts.cairo(
-                color: AppColors.primaryColor,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            // السؤال
-            Text(
-              'هل تريد اختيار هذا الموقع؟',
-              style: GoogleFonts.cairo(
-                color: Colors.grey[700],
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            // اسم الموقع
-            FutureBuilder<String>(
-              future: _getLocationName(position),
-              builder: (context, snapshot) {
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.primaryColor.withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.location_city,
-                        size: 20,
-                        color: AppColors.primaryColor,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          snapshot.hasData
-                              ? snapshot.data!
-                              : 'جاري تحديد الموقع...',
-                          style: GoogleFonts.cairo(
-                            color: AppColors.primaryColor,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          textAlign: TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            // الإحداثيات
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.place, size: 16, color: Colors.grey[600]),
-                      const SizedBox(width: 6),
-                      Text(
-                        'خط العرض: ${position.latitude.toStringAsFixed(6)}',
-                        style: GoogleFonts.cairo(
-                          color: Colors.grey[700],
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.place, size: 16, color: Colors.grey[600]),
-                      const SizedBox(width: 6),
-                      Text(
-                        'خط الطول: ${position.longitude.toStringAsFixed(6)}',
-                        style: GoogleFonts.cairo(
-                          color: Colors.grey[700],
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            // الأزرار
-            Row(
-              children: [
-                // زر الإلغاء
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Get.back();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      side: BorderSide(color: Colors.grey[300]!, width: 1.5),
-                    ),
-                    child: Text(
-                      'إلغاء',
-                      style: GoogleFonts.cairo(
-                        color: Colors.grey[700],
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // زر التأكيد
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      Get.back();
-                      setState(() {
-                        _selectedPosition = position;
-                        isLocationSelected = true;
-                      });
-                      await _getAddressFromLatLng(position);
-                      Get.snackbar(
-                        'تم التحديد',
-                        'تم تحديد الموقع بنجاح',
-                        snackPosition: SnackPosition.BOTTOM,
-                        backgroundColor: AppColors.primaryColor,
-                        colorText: Colors.white,
-                        margin: const EdgeInsets.all(16),
-                        borderRadius: 12,
-                        duration: const Duration(seconds: 2),
-                        icon: const Icon(
-                          Icons.check_circle,
-                          color: Colors.white,
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: AppColors.primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'تأكيد',
-                      style: GoogleFonts.cairo(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      isDismissible: true,
-      enableDrag: true,
-    );
+  // ═══════════════════════════════════════════════════════════════════════════
+  // تأكيد الموقع
+  // ═══════════════════════════════════════════════════════════════════════════
+  void _confirmLocation() {
+    if (_selectedPosition == null) {
+      _showMessage('الرجاء اختيار موقع من الخريطة', isError: true);
+      return;
+    }
+
+    setState(() {
+      _isLocationConfirmed = true;
+    });
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // حفظ الموقع
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<void> _saveLocation() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedPosition == null) {
+      _showMessage('لم يتم تحديد الموقع', isError: true);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final customerInfo = await AuthService.getCustomerInfo();
+      if (customerInfo == null) {
+        setState(() => _isSaving = false);
+        _showMessage('الرجاء تسجيل الدخول أولاً', isError: true);
+        return;
+      }
+
+      final customerId = customerInfo['id'] as int;
+
+      // بناء الملاحظات من الحقول الاختيارية
+      final notesBuilder = <String>[];
+      if (_streetController.text.isNotEmpty) {
+        notesBuilder.add('الشارع: ${_streetController.text}');
+      }
+      if (_buildingController.text.isNotEmpty) {
+        notesBuilder.add('البناية: ${_buildingController.text}');
+      }
+      if (_floorController.text.isNotEmpty) {
+        notesBuilder.add('الطابق: ${_floorController.text}');
+      }
+      if (_apartmentController.text.isNotEmpty) {
+        notesBuilder.add('الشقة: ${_apartmentController.text}');
+      }
+      if (_landmarkController.text.isNotEmpty) {
+        notesBuilder.add('أقرب نقطة دالة: ${_landmarkController.text}');
+      }
+
+      final notes = notesBuilder.isNotEmpty ? notesBuilder.join(' | ') : null;
+
+      // إضافة الموقع
+      final result = await LocationService.addLocation(
+        customerId: customerId,
+        name: _nameController.text.trim(),
+        latitude: _selectedPosition!.latitude,
+        longitude: _selectedPosition!.longitude,
+        locationName: _locationName,
+        fullAddress: _fullAddressController.text.trim(),
+        notes: notes,
+      );
+
+      setState(() => _isSaving = false);
+
+      if (result != null) {
+        if (mounted) {
+          // إرجاع البيانات للشاشة السابقة
+          Navigator.pop(context, {
+            'id': result.id,
+            'name': result.name,
+            'fullAddress': result.fullAddress ?? result.locationName ?? '',
+            'latitude': result.latitude,
+            'longitude': result.longitude,
+            'notes': result.notes,
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تم حفظ الموقع بنجاح ✓',
+                style: GoogleFonts.cairo(),
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        _showMessage('فشل في حفظ الموقع', isError: true);
+      }
+    } catch (e) {
+      setState(() => _isSaving = false);
+      _showMessage('حدث خطأ غير متوقع', isError: true);
+      debugPrint('خطأ في حفظ الموقع: $e');
+    }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: GoogleFonts.cairo(),
+            textAlign: TextAlign.center,
+          ),
+          backgroundColor: isError ? Colors.red : Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // البناء
+  // ═══════════════════════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
+          // الخلفية
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
           ),
           Positioned.fill(
             child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0),
+          // المحتوى
+          _isLocationConfirmed ? _buildDetailsForm() : _buildMapView(),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // عرض الخريطة (المرحلة الأولى)
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildMapView() {
+    return Stack(
+      children: [
+        // صورة الخلفية
+        Positioned.fill(
+          child: Image.asset(
+            'assets/img/main.png',
+            fit: BoxFit.cover,
+          ),
+        ),
+        // طبقة شفافة فوق الخلفية
+        Positioned.fill(
+          child: Container(
+            color: Colors.white.withOpacity(0.3),
+          ),
+        ),
+        // المحتوى
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 90.0),
             child: Column(
               children: [
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 5),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        BubbleButton(
-                          icon: Icons.arrow_back,
-                          onTap: () {
-                            Get.back();
-                          },
+                // الهيدر
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      BubbleButton(
+                        icon: Icons.arrow_back,
+                        onTap: () => Navigator.pop(context),
+                      ),
+                      Text(
+                        'اختر الموقع',
+                        style: GoogleFonts.cairo(
+                          color: AppColors.primaryColor,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
                         ),
-                        Text(
-                          'الموقع',
-                          style: GoogleFonts.cairo(
-                            color: AppColors.primaryColor,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 50),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 50),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 20),
+                // الخريطة
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 90),
-                    child: Column(
-                      children: [
-                        // عنوان القسم
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.add_location_alt,
-                              color: AppColors.primaryColor,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'إضافة موقع جديد',
-                              style: GoogleFonts.cairo(
-                                color: AppColors.primaryColor,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
+                  child: Stack(
+                    children: [
+                      // الخريطة في Container مع تقويس
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 15,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 5),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        // خريطة تفاعلية
-                        Container(
-                          height: 350,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFFFFF),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 10,
-                                spreadRadius: 2,
-                                offset: const Offset(0, 4),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: FlutterMap(
+                            mapController: _mapController,
+                            options: MapOptions(
+                              initialCenter: _currentPosition,
+                              initialZoom: 14,
+                              onTap: _onMapTapped,
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.alkafage.app',
                               ),
+                              if (_selectedPosition != null)
+                                MarkerLayer(
+                                  markers: [
+                                    Marker(
+                                      point: _selectedPosition!,
+                                      width: 50,
+                                      height: 50,
+                                      child: const Icon(
+                                        Icons.location_on,
+                                        size: 50,
+                                        color: Colors.red,
+                                        shadows: [
+                                          Shadow(blurRadius: 4, color: Colors.black26),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                             ],
                           ),
-                          child: Stack(
-                            children: [
-                              // الخريطة
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+
+                      // زر الموقع الحالي
+                      Positioned(
+                        bottom: 16,
+                        right: 16,
+                        child: Material(
+                          color: AppColors.primaryColor,
+                          borderRadius: BorderRadius.circular(16),
+                          elevation: 8,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: _isLoadingLocation ? null : _getCurrentLocation,
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              child: _isLoadingLocation
+                                  ? const SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 3,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.my_location,
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // معلومات الموقع المحدد
+                      if (_selectedPosition != null)
+                        Positioned(
+                          bottom: 16,
+                          left: 16,
+                          right: 90,
+                          child: Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            elevation: 4,
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.location_on, color: Colors.red, size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _locationName.isNotEmpty ? _locationName : 'موقع محدد',
+                                          style: GoogleFonts.cairo(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'خط العرض: ${_selectedPosition!.latitude.toStringAsFixed(6)}',
+                                    style: GoogleFonts.cairo(fontSize: 11, color: Colors.grey[600]),
+                                  ),
+                                  Text(
+                                    'خط الطول: ${_selectedPosition!.longitude.toStringAsFixed(6)}',
+                                    style: GoogleFonts.cairo(fontSize: 11, color: Colors.grey[600]),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // زر التأكيد في أسفل الشاشة
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ElevatedButton(
+                onPressed: _selectedPosition == null ? null : _confirmLocation,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryColor,
+                  disabledBackgroundColor: Colors.grey[300],
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 8,
+                ),
+                child: Text(
+                  _selectedPosition == null
+                      ? 'اضغط على الخريطة لتحديد الموقع'
+                      : 'تأكيد الموقع والمتابعة',
+                  style: GoogleFonts.cairo(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _selectedPosition == null ? Colors.grey[600] : Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // نموذج التفاصيل (المرحلة الثانية)  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildDetailsForm() {
+    return Stack(
+      children: [
+        // صورة الخلفية
+        Positioned.fill(
+          child: Image.asset(
+            'assets/img/main.png',
+            fit: BoxFit.cover,
+          ),
+        ),
+        // طبقة شفافة فوق الخلفية
+        Positioned.fill(
+          child: Container(
+            color: Colors.white.withOpacity(0.3),
+          ),
+        ),
+        // المحتوى
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 90.0),
+            child: Column(
+              children: [
+                // الهيدر
+                Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      BubbleButton(
+                        icon: Icons.arrow_forward,
+                        onTap: () {
+                          setState(() {
+                            _isLocationConfirmed = false;
+                          });
+                        },
+                      ),
+                      Text(
+                        'تفاصيل العنوان',
+                        style: GoogleFonts.cairo(
+                          color: AppColors.primaryColor,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 50),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // المحتوى
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Form(
+                      key: _formKey,
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // الخريطة الصغيرة
+                            Container(
+                              height: 180,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: AppColors.primaryColor.withOpacity(0.2),
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.05),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
                                 child: FlutterMap(
-                                  mapController: _mapController,
                                   options: MapOptions(
-                                    initialCenter: _currentPosition,
-                                    initialZoom: 14,
-                                    onTap: _onMapTapped,
-                                    onLongPress: _onMapLongPressed,
+                                    initialCenter: _selectedPosition!,
+                                    initialZoom: 15,
+                                    interactionOptions: const InteractionOptions(
+                                      flags: InteractiveFlag.none,
+                                    ),
                                   ),
                                   children: [
                                     TileLayer(
-                                      urlTemplate:
-                                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                       userAgentPackageName: 'com.alkafage.app',
                                     ),
-                                    if (_selectedPosition != null)
-                                      MarkerLayer(
-                                        markers: [
-                                          Marker(
-                                            point: _selectedPosition!,
-                                            width: 50,
-                                            height: 50,
-                                            child: Icon(
-                                              Icons.location_on,
-                                              size: 50,
-                                              color: AppColors.primaryColor,
-                                              shadows: const [
-                                                Shadow(
-                                                  blurRadius: 4,
-                                                  color: Colors.black26,
-                                                ),
-                                              ],
-                                            ),
+                                    MarkerLayer(
+                                      markers: [
+                                        Marker(
+                                          point: _selectedPosition!,
+                                          width: 40,
+                                          height: 40,
+                                          child: const Icon(
+                                            Icons.location_on,
+                                            size: 40,
+                                            color: Colors.red,
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ),
-                              // زر الموقع الحالي
-                              Positioned(
-                                top: 12,
-                                left: 12,
-                                child: InkWell(
-                                  onTap: _isLoadingLocation
-                                      ? null
-                                      : _getCurrentLocation,
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primaryColor,
-                                      borderRadius: BorderRadius.circular(12),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: AppColors.primaryColor
-                                              .withOpacity(0.3),
-                                          blurRadius: 8,
-                                          spreadRadius: 1,
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (_isLoadingLocation)
-                                          const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                    Colors.white,
-                                                  ),
-                                            ),
-                                          )
-                                        else
-                                          const Icon(
-                                            Icons.my_location,
-                                            color: Colors.white,
-                                            size: 18,
-                                          ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          _isLoadingLocation
-                                              ? 'جاري التحميل...'
-                                              : 'موقعي الحالي',
-                                          style: GoogleFonts.cairo(
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                            ),
+                            const SizedBox(height: 24),
+
+                            //الحقول المطلوبة
+                            Text(
+                              'المعلومات الأساسية *',
+                              style: GoogleFonts.cairo(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryColor,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            _buildTextField(
+                              controller: _nameController,
+                              label: 'اسم العنوان *',
+                              hint: 'مثال: المنزل، العمل، بيت العائلة',
+                              icon: Icons.label_outline,
+                              isRequired: true,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _buildTextField(
+                              controller: _fullAddressController,
+                              label: 'تفاصيل العنوان *',
+                              hint: 'مثال: حي الكرامة، شارع 20، بجانب مستشفى...',
+                              icon: Icons.location_on_outlined,
+                              isRequired: true,
+                              maxLines: 2,
+                            ),
+                            const SizedBox(height: 16),
+
+                            _buildTextField(
+                              controller: _phoneController,
+                              label: 'رقم الاتصال *',
+                              hint: '07xxxxxxxxx',
+                              icon: Icons.phone_outlined,
+                              isRequired: true,
+                              keyboardType: TextInputType.phone,
+                            ),
+
+                            const SizedBox(height: 32),
+
+                            // الحقول الاختيارية
+                            Text(
+                              'معلومات إضافية (اختياري)',
+                              style: GoogleFonts.cairo(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            _buildTextField(
+                              controller: _streetController,
+                              label: 'اسم الشارع',
+                              hint: 'مثال: شارع الكندي',
+                              icon: Icons.signpost_outlined,
+                            ),
+                            const SizedBox(height: 16),
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _buildingController,
+                                    label: 'رقم البناية',
+                                    hint: 'مثال: 25',
+                                    icon: Icons.business_outlined,
+                                    keyboardType: TextInputType.number,
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        // تعليمات للمستخدم
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.touch_app,
-                              size: 18,
-                              color: Colors.grey[600],
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _floorController,
+                                    label: 'رقم الطابق',
+                                    hint: 'مثال: 3',
+                                    icon: Icons.layers_outlined,
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'اضغط مطولاً على الخريطة لتحديد موقع بدقة',
-                              style: GoogleFonts.cairo(
-                                color: Colors.grey[600],
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            const SizedBox(height: 16),
+
+                            _buildTextField(
+                              controller: _apartmentController,
+                              label: 'رقم الشقة',
+                              hint: 'مثال: 12',
+                              icon: Icons.door_front_door_outlined,
+                              keyboardType: TextInputType.number,
                             ),
+                            const SizedBox(height: 16),
+
+                            _buildTextField(
+                              controller: _landmarkController,
+                              label: 'أقرب نقطة دالة',
+                              hint: 'مثال: مقابل صيدلية الشفاء',
+                              icon: Icons.place_outlined,
+                              maxLines: 2,
+                            ),
+
+                            const SizedBox(height: 20),
                           ],
                         ),
-                        const SizedBox(height: 20),
-                        // بطاقة التفاصيل
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFFFFF),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 10,
-                                spreadRadius: 2,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'تفاصيل الموقع',
-                                style: GoogleFonts.cairo(
-                                  color: AppColors.primaryColor,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              // اسم الموقع
-                              _buildLabel('اسم الموقع'),
-                              const SizedBox(height: 8),
-                              _buildTextField(
-                                controller: _locationNameController,
-                                hint: 'مثال: المنزل، العمل، مطعمي المفضل',
-                                icon: Icons.bookmark_border,
-                              ),
-                              const SizedBox(height: 16),
-                              // الملاحظات
-                              _buildLabel('ملاحظات (اختياري)'),
-                              const SizedBox(height: 8),
-                              _buildTextField(
-                                controller: _notesController,
-                                hint: 'أي تفاصيل إضافية تساعد في الوصول',
-                                icon: Icons.note_alt_outlined,
-                                maxLines: 3,
-                              ),
-                              const SizedBox(height: 24),
-                              // زر الحفظ
-                              SizedBox(
-                                width: double.infinity,
-                                height: 50,
-                                child: ElevatedButton(
-                                  onPressed: isLocationSelected
-                                      ? () {
-                                          if (_locationNameController
-                                              .text
-                                              .isEmpty) {
-                                            Get.snackbar(
-                                              'تنبيه',
-                                              'الرجاء إدخال اسم الموقع',
-                                              snackPosition:
-                                                  SnackPosition.BOTTOM,
-                                              backgroundColor: Colors.orange,
-                                              colorText: Colors.white,
-                                              margin: const EdgeInsets.all(16),
-                                              borderRadius: 12,
-                                              icon: const Icon(
-                                                Icons.warning_amber_rounded,
-                                                color: Colors.white,
-                                              ),
-                                            );
-                                            return;
-                                          }
-
-                                          // حفظ الموقع في القائمة
-                                          setState(() {
-                                            _savedLocations.add(
-                                              SavedLocation(
-                                                name: _locationNameController
-                                                    .text,
-                                                notes: _notesController.text,
-                                                position: _selectedPosition!,
-                                                savedAt: DateTime.now(),
-                                              ),
-                                            );
-
-                                            // إعادة تعيين النموذج
-                                            _locationNameController.clear();
-                                            _notesController.clear();
-                                            _selectedPosition = null;
-                                            isLocationSelected = false;
-                                          });
-
-                                          Get.snackbar(
-                                            'تم الحفظ',
-                                            'تم إضافة الموقع إلى قائمتك',
-                                            snackPosition: SnackPosition.BOTTOM,
-                                            backgroundColor: Colors.green,
-                                            colorText: Colors.white,
-                                            margin: const EdgeInsets.all(16),
-                                            borderRadius: 12,
-                                            duration: const Duration(
-                                              seconds: 2,
-                                            ),
-                                            icon: const Icon(
-                                              Icons.check_circle,
-                                              color: Colors.white,
-                                            ),
-                                          );
-                                        }
-                                      : null,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primaryColor,
-                                    disabledBackgroundColor: Colors.grey[300],
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: Text(
-                                    isLocationSelected
-                                        ? 'حفظ الموقع'
-                                        : 'حدد موقعاً من الخريطة',
-                                    style: GoogleFonts.cairo(
-                                      color: isLocationSelected
-                                          ? Colors.white
-                                          : Colors.grey[600],
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // قسم المواقع المحفوظة
-                        if (_savedLocations.isNotEmpty) ...[
-                          const SizedBox(height: 32),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.location_on,
-                                color: AppColors.primaryColor,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'مواقعي المحفوظة',
-                                style: GoogleFonts.cairo(
-                                  color: AppColors.primaryColor,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primaryColor,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  '${_savedLocations.length}',
-                                  style: GoogleFonts.cairo(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          // عرض المواقع المحفوظة
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _savedLocations.length,
-                            itemBuilder: (context, index) {
-                              final location = _savedLocations[index];
-                              return _buildLocationCard(location, index);
-                            },
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
 
-  Widget _buildLocationCard(SavedLocation location, int index) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFFFF),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            spreadRadius: 1,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // أيقونة الموقع
-              Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.location_on,
-                  color: AppColors.primaryColor,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // اسم الموقع
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      location.name,
-                      style: GoogleFonts.cairo(
-                        color: AppColors.primaryColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${location.position.latitude.toStringAsFixed(4)}, ${location.position.longitude.toStringAsFixed(4)}',
-                      style: GoogleFonts.cairo(
-                        color: Colors.grey[600],
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // زر الحذف
-              IconButton(
-                onPressed: () {
-                  _showDeleteConfirmation(index);
-                },
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: Colors.red[400],
-                  size: 22,
-                ),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.red[50],
+        // زر الحفظ في الأسفل
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _saveLocation,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryColor,
+                  disabledBackgroundColor: Colors.grey[300],
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  elevation: 8,
                 ),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        'حفظ العنوان',
+                        style: GoogleFonts.cairo(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
-            ],
+            ),
           ),
-          // الملاحظات إذا كانت موجودة
-          if (location.notes.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.note_outlined, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      location.notes,
-                      style: GoogleFonts.cairo(
-                        color: Colors.grey[700],
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          // التاريخ
-          Row(
-            children: [
-              Icon(Icons.access_time, size: 14, color: Colors.grey[500]),
-              const SizedBox(width: 6),
-              Text(
-                'تم الحفظ: ${_formatDate(location.savedAt)}',
-                style: GoogleFonts.cairo(
-                  color: Colors.grey[500],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inMinutes < 1) {
-      return 'الآن';
-    } else if (difference.inHours < 1) {
-      return 'منذ ${difference.inMinutes} دقيقة';
-    } else if (difference.inDays < 1) {
-      return 'منذ ${difference.inHours} ساعة';
-    } else if (difference.inDays < 7) {
-      return 'منذ ${difference.inDays} يوم';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
-  }
-
-  void _showDeleteConfirmation(int index) {
-    Get.bottomSheet(
-      Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
         ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: Colors.red[50],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.delete_outline,
-                color: Colors.red[400],
-                size: 40,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'حذف الموقع',
-              style: GoogleFonts.cairo(
-                color: AppColors.primaryColor,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'هل أنت متأكد من حذف "${_savedLocations[index].name}"؟',
-              style: GoogleFonts.cairo(
-                color: Colors.grey[700],
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Get.back();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      side: BorderSide(color: Colors.grey[300]!, width: 1.5),
-                    ),
-                    child: Text(
-                      'إلغاء',
-                      style: GoogleFonts.cairo(
-                        color: Colors.grey[700],
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _savedLocations.removeAt(index);
-                      });
-                      Get.back();
-                      Get.snackbar(
-                        'تم الحذف',
-                        'تم حذف الموقع من قائمتك',
-                        snackPosition: SnackPosition.BOTTOM,
-                        backgroundColor: Colors.red[400],
-                        colorText: Colors.white,
-                        margin: const EdgeInsets.all(16),
-                        borderRadius: 12,
-                        duration: const Duration(seconds: 2),
-                        icon: const Icon(Icons.delete, color: Colors.white),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: Colors.red[400],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      'حذف',
-                      style: GoogleFonts.cairo(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      isDismissible: true,
-      enableDrag: true,
+      ],
     );
   }
 
-  Widget _buildLabel(String text) {
-    return Text(
-      text,
-      style: GoogleFonts.cairo(
-        color: AppColors.primaryColor,
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-
+  // ═══════════════════════════════════════════════════════════════════════════
+  // حقل نصي مخصص
+  // ═══════════════════════════════════════════════════════════════════════════
   Widget _buildTextField({
     required TextEditingController controller,
+    required String label,
     required String hint,
     required IconData icon,
+    bool isRequired = false,
     int maxLines = 1,
+    TextInputType? keyboardType,
   }) {
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      textAlign: TextAlign.right,
-      style: GoogleFonts.cairo(
-        color: AppColors.primaryColor,
-        fontSize: 15,
-        fontWeight: FontWeight.w600,
-      ),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.cairo(color: Colors.grey[400], fontSize: 14),
-        prefixIcon: Icon(icon, color: AppColors.primaryColor, size: 22),
-        filled: true,
-        fillColor: Colors.grey[100],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.primaryColor.withOpacity(0.2),
-            width: 1,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.cairo(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
           ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: AppColors.primaryColor.withOpacity(0.2),
-            width: 1,
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
+          style: GoogleFonts.cairo(fontSize: 15),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: GoogleFonts.cairo(
+              fontSize: 14,
+            ),
+            prefixIcon: Icon(icon, color: AppColors.primaryColor, size: 22),
+            filled: true,
+            fillColor: Colors.grey[50],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: AppColors.primaryColor,
+                width: 2,
+              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.red),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
+          validator: isRequired
+              ? (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'هذا الحقل مطلوب';
+                  }
+                  return null;
+                }
+              : null,
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primaryColor, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
-        ),
-      ),
+      ],
     );
   }
 }

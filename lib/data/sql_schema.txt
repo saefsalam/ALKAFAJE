@@ -109,13 +109,19 @@ CREATE TABLE public.items (
 CREATE TABLE public.location (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
   shop_id uuid,
+  customer_id bigint,
   name text,
-  L_X double precision,
-  L_y double precision,
+  L_X double precision,  -- خط الطول (Longitude) - لاحظ الحروف الكبيرة!
+  L_y double precision,  -- خط العرض (Latitude) - L كبير، y صغير
   location_name text,
+  full_address text,
+  notes text,
+  is_default boolean NOT NULL DEFAULT false,
   CONSTRAINT location_pkey PRIMARY KEY (id),
-  CONSTRAINT location_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
+  CONSTRAINT location_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT location_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE
 );
 CREATE TABLE public.order_items (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,

@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../utls/constants.dart';
 import '../services/auth_service.dart';
 import '../services/local_cart_service.dart';
+import '../widget/bubble_button.dart';
 import 'auth_screen.dart';
 import 'checkout_screen.dart';
 
@@ -352,40 +353,84 @@ class _CartScreenState extends State<CartScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: _buildAppBar(),
-      body: _isLoading ? _buildLoadingState() : _buildBody(),
-      bottomNavigationBar: _cartItems.isNotEmpty ? _buildBottomBar() : null,
-    );
-  }
-
-  /// بناء شريط العنوان
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      centerTitle: true,
-      title: Text(
-        'السلة',
-        style: GoogleFonts.cairo(
-          color: AppColors.primaryColor,
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      actions: [
-        if (_cartItems.isNotEmpty)
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: _clearCart,
-            tooltip: 'تفريغ السلة',
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          // صورة الخلفية
+          Positioned.fill(
+            child: Image.asset(
+              'assets/img/main.png',
+              fit: BoxFit.cover,
+            ),
           ),
-        IconButton(
-          icon: const Icon(Icons.refresh, color: AppColors.primaryColor),
-          onPressed: _loadCartItems,
-          tooltip: 'تحديث',
-        ),
-      ],
+          // طبقة شفافة فوق الخلفية
+          Positioned.fill(
+            child: Container(
+              color: Colors.white.withOpacity(0.3),
+            ),
+          ),
+          // المحتوى
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 0),
+              child: Column(
+                children: [
+                  // الهيدر
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        BubbleButton(
+                          icon: Icons.arrow_back,
+                          onTap: () => Navigator.pop(context),
+                        ),
+                        Text(
+                          'السلة',
+                          style: GoogleFonts.cairo(
+                            color: AppColors.primaryColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        // أزرار الإجراءات
+                        Row(
+                          children: [
+                            if (_cartItems.isNotEmpty)
+                              BubbleButton(
+                                icon: Icons.delete_outline,
+                                onTap: _clearCart,
+                                iconColor: Colors.red,
+                              ),
+                            const SizedBox(width: 8),
+                            BubbleButton(
+                              icon: Icons.refresh,
+                              onTap: _loadCartItems,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // المحتوى
+                  Expanded(
+                    child: _isLoading ? _buildLoadingState() : _buildBody(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // الشريط السفلي فوق المحتوى
+          if (_cartItems.isNotEmpty && !_isLoading)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _buildBottomBar(),
+            ),
+        ],
+      ),
     );
   }
 
@@ -412,7 +457,7 @@ class _CartScreenState extends State<CartScreen> {
         // قائمة المنتجات
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.all(15),
+            padding: const EdgeInsets.only(bottom: 100),
             itemCount: _cartItems.length,
             itemBuilder: (context, index) {
               return _buildCartItem(_cartItems[index]);
@@ -426,12 +471,19 @@ class _CartScreenState extends State<CartScreen> {
   /// رسالة تشجيع على تسجيل الدخول
   Widget _buildLoginPrompt() {
     return Container(
-      margin: const EdgeInsets.all(15),
+      margin: const EdgeInsets.only(bottom: 15),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.orange[50],
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.orange, width: 1),
+        border: Border.all(color: Colors.orange, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -707,70 +759,73 @@ class _CartScreenState extends State<CartScreen> {
   /// شريط الأسفل (الإجمالي وزر الشراء)
   Widget _buildBottomBar() {
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 15,
+            offset: const Offset(0, -3),
           ),
         ],
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // الإجمالي
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'الإجمالي:',
-                  style: GoogleFonts.cairo(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // الإجمالي
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'الإجمالي:',
+                    style: GoogleFonts.cairo(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
                   ),
-                ),
-                Text(
-                  '${_totalPrice.toStringAsFixed(2)} IQD',
-                  style: GoogleFonts.cairo(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primaryColor,
+                  Text(
+                    '${_totalPrice.toStringAsFixed(0)} IQD',
+                    style: GoogleFonts.cairo(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primaryColor,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
 
-            const SizedBox(height: 15),
+              const SizedBox(height: 15),
 
-            // زر الشراء
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton(
-                onPressed: _checkout,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              // زر الشراء
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: _checkout,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 8,
                   ),
-                  elevation: 2,
-                ),
-                child: Text(
-                  _isLoggedIn ? 'إتمام الشراء' : 'سجل دخولك للشراء',
-                  style: GoogleFonts.cairo(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                  child: Text(
+                    _isLoggedIn ? 'إتمام الشراء' : 'سجل دخولك للشراء',
+                    style: GoogleFonts.cairo(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

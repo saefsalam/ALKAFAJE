@@ -40,10 +40,9 @@ class OrderService {
   /// [note] ملاحظة اختيارية
   /// [address] عنوان التوصيل التفصيلي
   static Future<Map<String, dynamic>> createOrder({
-    required String city,
-    required double deliveryFee,
     String? note,
     String? address,
+    int? locationId, // إضافة location_id
   }) async {
     if (!AuthService.isLoggedIn) {
       return {'success': false, 'message': 'يجب تسجيل الدخول أولاً'};
@@ -84,26 +83,34 @@ class OrderService {
         });
       }
 
-      final total = subtotal + deliveryFee;
+      final total = subtotal; // لا يوجد رسوم توصيل
 
-      // 4. تحديث عنوان ومدينة العميل
-      await AuthService.updateCustomerInfo(
-        city: city,
-        address: address,
-      );
+      // 4. تحديث عنوان العميل إذا كان موجوداً
+      if (address != null) {
+        await AuthService.updateCustomerInfo(
+          address: address,
+        );
+      }
 
       // 5. إنشاء الطلب
+      final orderData = {
+        'shop_id': _shopId,
+        'customer_id': customerId,
+        'status': 'pending',
+        'subtotal': subtotal,
+        'delivery_fee': 0.0, // لا توجد رسوم توصيل
+        'total': total,
+        'note': note,
+      };
+
+      // إضافة location_id إذا كان موجوداً
+      if (locationId != null) {
+        orderData['assigned_location_id'] = locationId;
+      }
+
       final orderResult = await _supabase
           .from('orders')
-          .insert({
-            'shop_id': _shopId,
-            'customer_id': customerId,
-            'status': 'pending',
-            'subtotal': subtotal,
-            'delivery_fee': deliveryFee,
-            'total': total,
-            'note': note,
-          })
+          .insert(orderData)
           .select('id')
           .single();
 

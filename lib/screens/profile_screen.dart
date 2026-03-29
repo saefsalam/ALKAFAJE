@@ -3,9 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
+import 'addresses/select_location_bottom_sheet.dart';
 import 'auth_screen.dart';
 import 'orders/orders_screen.dart';
-import 'location_screen.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // شاشة الملف الشخصي
@@ -109,6 +109,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       _loadCustomerInfo();
     }
+  }
+
+  // عرض bottom sheet للمواقع المحفوظة
+  Future<void> _showLocationsBottomSheet() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: false,
+      builder: (context) => const SelectLocationBottomSheet(),
+    );
   }
 
   @override
@@ -396,12 +407,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'الموقع',
             iconColor: AppColors.primaryColor,
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LocationScreen(),
-                ),
-              );
+              if (!AuthService.isLoggedIn) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'يجب تسجيل الدخول أولاً',
+                      style: GoogleFonts.cairo(),
+                      textAlign: TextAlign.center,
+                    ),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                return;
+              }
+              _showLocationsBottomSheet();
             },
           ),
 
