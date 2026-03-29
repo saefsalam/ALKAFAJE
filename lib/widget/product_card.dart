@@ -7,6 +7,8 @@ import 'dart:async';
 import '../models/product_model.dart';
 import '../utls/constants.dart';
 import '../screens/product_detail_screen.dart';
+import '../services/auth_service.dart';
+import '../services/local_cart_service.dart';
 import '../main.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -54,7 +56,8 @@ class _ProductCardState extends State<ProductCard> {
         for (var img in widget.item['item_images']) {
           final path = img['image_path'];
           if (path != null && path.toString().isNotEmpty) {
-            _images.add(path);
+            // تحويل المسار إلى URL كامل من Supabase Storage
+            _images.add(_getImageUrl(path));
           }
         }
       }
@@ -62,7 +65,8 @@ class _ProductCardState extends State<ProductCard> {
       if (widget.item.images != null && widget.item.images.isNotEmpty) {
         for (var img in widget.item.images) {
           if (img.imagePath.isNotEmpty) {
-            _images.add(img.imagePath);
+            // تحويل المسار إلى URL كامل من Supabase Storage
+            _images.add(_getImageUrl(img.imagePath));
           }
         }
       }
@@ -71,6 +75,23 @@ class _ProductCardState extends State<ProductCard> {
     if (_images.isEmpty) {
       _images.add('assets/img/main.png');
     }
+  }
+
+  // تحويل مسار الصورة إلى URL كامل
+  String _getImageUrl(String imagePath) {
+    // إذا كانت URL كامل بالفعل، ارجعها كما هي
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath;
+    }
+
+    // إذا كانت صورة محلية، ارجعها كما هي
+    if (imagePath.startsWith('assets/')) {
+      return imagePath;
+    }
+
+    // بناء URL من Supabase Storage
+    final supabase = Supabase.instance.client;
+    return supabase.storage.from('items').getPublicUrl(imagePath);
   }
 
   void _startAutoSlide() {
@@ -98,15 +119,13 @@ class _ProductCardState extends State<ProductCard> {
   @override
   Widget build(BuildContext context) {
     // استخراج البيانات
-    final String title = widget.item is Map
-        ? (widget.item['title'] ?? '')
-        : widget.item.title;
+    final String title =
+        widget.item is Map ? (widget.item['title'] ?? '') : widget.item.title;
     final String? description = widget.item is Map
         ? widget.item['description']
         : widget.item.description;
-    final dynamic price = widget.item is Map
-        ? widget.item['price']
-        : widget.item.price;
+    final dynamic price =
+        widget.item is Map ? widget.item['price'] : widget.item.price;
     final dynamic discountPrice = widget.item is Map
         ? widget.item['discount_price']
         : widget.item.discountPrice;
@@ -116,12 +135,10 @@ class _ProductCardState extends State<ProductCard> {
     final bool hasDiscount = discountPrice != null && discountPrice < price;
 
     return GestureDetector(
-      onTap:
-          widget.onTap ??
+      onTap: widget.onTap ??
           () {
-            final itemModel = widget.item is Map
-                ? Item.fromJson(widget.item)
-                : widget.item;
+            final itemModel =
+                widget.item is Map ? Item.fromJson(widget.item) : widget.item;
             Get.to(() => ProductDetailScreen(item: itemModel));
           },
       child: Container(
@@ -179,15 +196,15 @@ class _ProductCardState extends State<ProductCard> {
                                   ),
                                   errorWidget: (context, url, error) =>
                                       Container(
-                                        height: widget.imageHeight,
-                                        color: Colors.grey[200],
-                                        child: Icon(
-                                          Icons.image,
-                                          size: 50,
-                                          color: AppColors.primaryColor
-                                              .withOpacity(0.3),
-                                        ),
-                                      ),
+                                    height: widget.imageHeight,
+                                    color: Colors.grey[200],
+                                    child: Icon(
+                                      Icons.image,
+                                      size: 50,
+                                      color: AppColors.primaryColor
+                                          .withOpacity(0.3),
+                                    ),
+                                  ),
                                 )
                               : Image.asset(
                                   imagePath,
@@ -329,14 +346,12 @@ class _ProductCardState extends State<ProductCard> {
 
                   // زر إضافة للسلة
                   _AddToCartButton(
-                    itemId: widget.item is Map
-                        ? widget.item['id']
-                        : widget.item.id,
+                    itemId:
+                        widget.item is Map ? widget.item['id'] : widget.item.id,
                     title: title,
                     price: price,
-                    imagePath: _images.isNotEmpty
-                        ? _images[0]
-                        : 'assets/img/main.png',
+                    imagePath:
+                        _images.isNotEmpty ? _images[0] : 'assets/img/main.png',
                     description: description,
                   ),
                 ],
@@ -373,58 +388,40 @@ class _AddToCartButton extends StatefulWidget {
 
 class _AddToCartButtonState extends State<_AddToCartButton> {
   int _quantity = 0;
-
-  // Supabase
   static final _supabase = Supabase.instance.client;
-  static int? _currentCustomerId = 1; // مؤقت للاختبار
-  static int? _currentCartId;
 
-  Future<int?> _getOrCreateCart() async {
-    if (_currentCustomerId == null) {
-      print('❌ لا يوجد عميل مسجل');
-      return null;
+  @override
+  void initState() {
+    super.initState();
+    _loadQuantity();
+  }
+
+  // تحميل الكمية حسب حالة تسجيل الدخول
+  Future<void> _loadQuantity() async {
+    int qty = 0;
+
+    if (AuthService.isLoggedIn) {
+      // تحميل من قاعدة البيانات
+      qty = await _getItemQuantityFromDB(widget.itemId);
+    } else {
+      // تحميل من السلة المحلية
+      final localCart = await LocalCartService.loadLocalCart();
+      qty = localCart[widget.itemId] ?? 0;
     }
-    if (_currentCartId != null) return _currentCartId;
 
-    try {
-      print('🔍 البحث عن سلة للعميل: $_currentCustomerId');
-      final existingCart = await _supabase
-          .from('carts')
-          .select('id')
-          .eq('shop_id', SupabaseConfig.shopId)
-          .eq('customer_id', _currentCustomerId!)
-          .maybeSingle();
-
-      if (existingCart != null) {
-        _currentCartId = existingCart['id'];
-        print('🛒 تم العثور على سلة: $_currentCartId');
-        return _currentCartId;
-      }
-
-      print('🆕 إنشاء سلة جديدة...');
-      final newCart = await _supabase
-          .from('carts')
-          .insert({
-            'shop_id': SupabaseConfig.shopId,
-            'customer_id': _currentCustomerId,
-          })
-          .select('id')
-          .single();
-
-      _currentCartId = newCart['id'];
-      print('✅ تم إنشاء سلة: $_currentCartId');
-      return _currentCartId;
-    } catch (e) {
-      print('❌ خطأ في السلة: $e');
-      return null;
+    if (mounted) {
+      setState(() => _quantity = qty);
     }
   }
 
-  Future<int> _getItemQuantityInCart(int itemId) async {
-    final cartId = await _getOrCreateCart();
-    if (cartId == null) return 0;
+  // الحصول على كمية المنتج من قاعدة البيانات
+  Future<int> _getItemQuantityFromDB(int itemId) async {
+    if (!AuthService.isLoggedIn) return 0;
 
     try {
+      final cartId = await _getOrCreateCart();
+      if (cartId == null) return 0;
+
       final item = await _supabase
           .from('cart_items')
           .select('quantity')
@@ -434,28 +431,73 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
 
       return item?['quantity'] ?? 0;
     } catch (e) {
+      print('❌ خطأ في تحميل الكمية: $e');
       return 0;
     }
   }
 
-  // تحديث الكمية مباشرة في قاعدة البيانات
-  Future<bool> _updateQuantityInDB(int itemId, int newQuantity) async {
-    print('🛒 تحديث كمية المنتج $itemId إلى: $newQuantity');
-    final cartId = await _getOrCreateCart();
-    if (cartId == null) {
-      print('❌ فشل: لا توجد سلة');
-      return false;
+  // الحصول على أو إنشاء سلة في قاعدة البيانات
+  Future<int?> _getOrCreateCart() async {
+    if (!AuthService.isLoggedIn) return null;
+
+    try {
+      // الحصول على customer_id (bigint) من auth_user_id
+      final customerId = await AuthService.getCustomerId();
+      if (customerId == null) {
+        print('❌ لم يتم العثور على سجل العميل');
+        return null;
+      }
+
+      final existingCart = await _supabase
+          .from('carts')
+          .select('id')
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('customer_id', customerId)
+          .maybeSingle();
+
+      if (existingCart != null) {
+        return existingCart['id'] as int;
+      }
+
+      final newCart = await _supabase
+          .from('carts')
+          .insert({
+            'shop_id': SupabaseConfig.shopId,
+            'customer_id': customerId,
+          })
+          .select('id')
+          .single();
+
+      return newCart['id'] as int;
+    } catch (e) {
+      print('❌ خطأ في السلة: $e');
+      return null;
     }
+  }
+
+  // تحديث الكمية
+  Future<bool> _updateQuantity(int itemId, int newQuantity) async {
+    if (AuthService.isLoggedIn) {
+      // تحديث في قاعدة البيانات
+      return await _updateQuantityInDB(itemId, newQuantity);
+    } else {
+      // تحديث محلياً
+      return await LocalCartService.updateLocalCartItem(itemId, newQuantity);
+    }
+  }
+
+  // تحديث الكمية في قاعدة البيانات
+  Future<bool> _updateQuantityInDB(int itemId, int newQuantity) async {
+    final cartId = await _getOrCreateCart();
+    if (cartId == null) return false;
 
     try {
       if (newQuantity <= 0) {
-        // حذف المنتج
         await _supabase
             .from('cart_items')
             .delete()
             .eq('cart_id', cartId)
             .eq('item_id', itemId);
-        print('🗑️ تم حذف المنتج من السلة');
         return true;
       }
 
@@ -467,13 +509,10 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
           .maybeSingle();
 
       if (existingItem != null) {
-        await _supabase
-            .from('cart_items')
-            .update({
-              'quantity': newQuantity,
-              'updated_at': DateTime.now().toIso8601String(),
-            })
-            .eq('id', existingItem['id']);
+        await _supabase.from('cart_items').update({
+          'quantity': newQuantity,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', existingItem['id']);
       } else {
         await _supabase.from('cart_items').insert({
           'cart_id': cartId,
@@ -481,24 +520,10 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
           'quantity': newQuantity,
         });
       }
-      print('✅ تم تحديث الكمية إلى: $newQuantity');
       return true;
     } catch (e) {
       print('❌ خطأ في تحديث الكمية: $e');
       return false;
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadQuantity();
-  }
-
-  Future<void> _loadQuantity() async {
-    final qty = await _getItemQuantityInCart(widget.itemId);
-    if (mounted) {
-      setState(() => _quantity = qty);
     }
   }
 
@@ -733,14 +758,51 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: () async {
+                      // حفظ مرجع الـ ScaffoldMessenger قبل إغلاق الـ BottomSheet
+                      final messenger = ScaffoldMessenger.of(this.context);
                       Navigator.pop(context);
-                      // تحديث الكمية مباشرة في قاعدة البيانات
-                      final success = await _updateQuantityInDB(
+                      // تحديث الكمية حسب حالة تسجيل الدخول
+                      final success = await _updateQuantity(
                         widget.itemId,
                         selectedQuantity,
                       );
                       if (success && mounted) {
                         setState(() => _quantity = selectedQuantity);
+                        // رسالة نجاح
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _quantity > 0
+                                  ? 'تم تحديث السلة بنجاح'
+                                  : 'تمت الإضافة إلى السلة',
+                              style: GoogleFonts.cairo(
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            backgroundColor: Colors.green,
+                            duration: const Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
+                      } else if (mounted) {
+                        // رسالة خطأ
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'حدث خطأ، حاول مرة أخرى',
+                              style: GoogleFonts.cairo(
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
                       }
                     },
                     style: ElevatedButton.styleFrom(

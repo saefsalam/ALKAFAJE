@@ -1,13 +1,13 @@
-import 'package:alkafage/screens/cart_screen.dart';
-import 'package:alkafage/screens/product_screen/Product_Screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/cart_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/product_screen/Product_Screen.dart';
 
 // RouteObserver للتتبع عند الدخول والخروج من الشاشات
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
@@ -19,7 +19,7 @@ class SupabaseConfig {
   static const String supabaseUrl = 'https://ibwawjjqewuikmmnxqgo.supabase.co';
 
   static const String supabaseAnonKey =
-      'sb_publishable_UDC3-1lmARJgip7zcwAYtg_jE2MMral'; 
+      'sb_publishable_UDC3-1lmARJgip7zcwAYtg_jE2MMral';
 
   static const String shopId = '550e8400-e29b-41d4-a716-446655440001';
 }
@@ -98,27 +98,24 @@ class _MainScreenState extends State<MainScreen> {
             index: _selectedIndex,
             children: [
               Navigator(
-                onGenerateRoute:
-                    (settings) => GetPageRoute(page: () => const HomeScreen()),
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const HomeScreen()),
               ),
               Navigator(
-                onGenerateRoute:
-                    (settings) =>
-                        GetPageRoute(page: () => const ProductScreen()),
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const ProductScreen()),
               ),
               Navigator(
-                onGenerateRoute:
-                    (settings) => GetPageRoute(page: () => const CartScreen()),
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const CartScreen()),
               ),
               Navigator(
-                onGenerateRoute:
-                    (settings) =>
-                        GetPageRoute(page: () => const FavoritesScreen()),
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const FavoritesScreen()),
               ),
               Navigator(
-                onGenerateRoute:
-                    (settings) =>
-                        GetPageRoute(page: () => const ProfileScreen()),
+                onGenerateRoute: (settings) =>
+                    GetPageRoute(page: () => const ProfileScreen()),
               ),
             ],
           ),

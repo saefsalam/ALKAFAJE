@@ -43,6 +43,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _checkFavoriteStatus() async {
     final isFav = await FavoritesService.checkIfFavorite(widget.item.id);
+    if (!mounted) return;
     setState(() {
       _isFavorite = isFav;
       _isCheckingFavorite = false;
@@ -160,6 +161,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _toggleFavorite() async {
     final newState = await FavoritesService.toggleFavorite(widget.item.id);
+    if (!mounted) return;
     setState(() {
       _isFavorite = newState;
     });

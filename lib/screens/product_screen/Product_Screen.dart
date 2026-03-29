@@ -138,6 +138,7 @@ class _ProductScreenState extends State<ProductScreen> {
 
   // جلب البيانات من قاعدة البيانات
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
@@ -246,6 +247,7 @@ class _ProductScreenState extends State<ProductScreen> {
         _hasMoreItems = false;
       }
 
+      if (!mounted) return;
       setState(() {
         _categories = categories;
         _allItems = items;
@@ -254,6 +256,7 @@ class _ProductScreenState extends State<ProductScreen> {
       });
     } catch (e) {
       print('خطأ في تحميل البيانات: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
@@ -262,6 +265,7 @@ class _ProductScreenState extends State<ProductScreen> {
   Future<void> _loadMoreItems() async {
     if (_isLoadingMore || !_hasMoreItems || _searchQuery.isNotEmpty) return;
 
+    if (!mounted) return;
     setState(() => _isLoadingMore = true);
 
     try {
@@ -336,6 +340,7 @@ class _ProductScreenState extends State<ProductScreen> {
         _hasMoreItems = false;
       }
 
+      if (!mounted) return;
       setState(() {
         _allItems.addAll(newItems);
         _isLoadingMore = false;
@@ -348,6 +353,7 @@ class _ProductScreenState extends State<ProductScreen> {
     } catch (e) {
       print('خطأ في تحميل المزيد: $e');
       _currentPage--;
+      if (!mounted) return;
       setState(() => _isLoadingMore = false);
     }
   }

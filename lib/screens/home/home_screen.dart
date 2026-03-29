@@ -52,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
@@ -120,6 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
 
+      if (!mounted) return;
       setState(() {
         _banners = bannersData.map((data) {
           data['image_path'] =
@@ -138,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       print('خطأ في تحميل البيانات: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }

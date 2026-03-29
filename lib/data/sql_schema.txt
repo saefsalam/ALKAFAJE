@@ -1,29 +1,6 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
-CREATE TABLE public.parts (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  shop_id uuid NOT NULL,
-  name text NOT NULL,
-  sort_order smallint NOT NULL DEFAULT 1,
-  is_active boolean NOT NULL DEFAULT true,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT parts_pkey PRIMARY KEY (id),
-  CONSTRAINT parts_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
-);
-
-CREATE TABLE public.part_items (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  part_id bigint NOT NULL,
-  item_id bigint NOT NULL,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT part_items_pkey PRIMARY KEY (id),
-  CONSTRAINT part_items_part_id_fkey FOREIGN KEY (part_id) REFERENCES public.parts(id),
-  CONSTRAINT part_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id),
-  CONSTRAINT part_items_unique UNIQUE (part_id, item_id)
-);
-
 CREATE TABLE public.banner_ads (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   shop_id uuid NOT NULL,
@@ -93,6 +70,17 @@ CREATE TABLE public.delivery_zones (
   CONSTRAINT delivery_zones_pkey PRIMARY KEY (id),
   CONSTRAINT delivery_zones_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
 );
+CREATE TABLE public.favorites (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  customer_id bigint NOT NULL,
+  item_id bigint NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT favorites_pkey PRIMARY KEY (id),
+  CONSTRAINT favorites_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
+  CONSTRAINT favorites_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
+  CONSTRAINT favorites_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+);
 CREATE TABLE public.item_images (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   item_id bigint NOT NULL,
@@ -118,6 +106,17 @@ CREATE TABLE public.items (
   CONSTRAINT items_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
   CONSTRAINT items_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
 );
+CREATE TABLE public.location (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  shop_id uuid,
+  name text,
+  L_X double precision,
+  L_y double precision,
+  location_name text,
+  CONSTRAINT location_pkey PRIMARY KEY (id),
+  CONSTRAINT location_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
+);
 CREATE TABLE public.order_items (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   order_id bigint NOT NULL,
@@ -138,9 +137,11 @@ CREATE TABLE public.order_status_history (
   changed_by uuid,
   notes text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  location_id bigint,
   CONSTRAINT order_status_history_pkey PRIMARY KEY (id),
   CONSTRAINT order_status_history_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
-  CONSTRAINT order_status_history_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES auth.users(id)
+  CONSTRAINT order_status_history_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES auth.users(id),
+  CONSTRAINT order_status_history_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.orders(id)
 );
 CREATE TABLE public.orders (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -153,9 +154,40 @@ CREATE TABLE public.orders (
   note text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  assigned_location_id bigint,
   CONSTRAINT orders_pkey PRIMARY KEY (id),
   CONSTRAINT orders_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
-  CONSTRAINT orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
+  CONSTRAINT orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
+  CONSTRAINT orders_assigned_location_id_fkey FOREIGN KEY (assigned_location_id) REFERENCES public.location(id)
+);
+CREATE TABLE public.part_items (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  part_id bigint NOT NULL,
+  item_id bigint NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT part_items_pkey PRIMARY KEY (id),
+  CONSTRAINT part_items_part_id_fkey FOREIGN KEY (part_id) REFERENCES public.parts(id),
+  CONSTRAINT part_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+);
+CREATE TABLE public.parts (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  name text NOT NULL,
+  sort_order smallint DEFAULT 1,
+  is_active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT parts_pkey PRIMARY KEY (id),
+  CONSTRAINT parts_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
+);
+CREATE TABLE public.password_reset_otps (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  email text NOT NULL,
+  otp_hash text NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  consumed_at timestamp with time zone,
+  attempts integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT password_reset_otps_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.shop_users (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -164,9 +196,13 @@ CREATE TABLE public.shop_users (
   role text NOT NULL DEFAULT 'staff'::text CHECK (role = ANY (ARRAY['owner'::text, 'admin'::text, 'staff'::text])),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  name text,
+  location_id bigint,
+  username text,
   CONSTRAINT shop_users_pkey PRIMARY KEY (id),
   CONSTRAINT shop_users_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
-  CONSTRAINT shop_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT shop_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT shop_users_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.location(id)
 );
 CREATE TABLE public.shops (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -196,16 +232,4 @@ CREATE TABLE public.whatsapp_otps (
   CONSTRAINT whatsapp_otps_pkey PRIMARY KEY (id),
   CONSTRAINT whatsapp_otps_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
   CONSTRAINT whatsapp_otps_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
-);
-CREATE TABLE public.favorites (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  shop_id uuid NOT NULL,
-  customer_id bigint NOT NULL,
-  item_id bigint NOT NULL,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT favorites_pkey PRIMARY KEY (id),
-  CONSTRAINT favorites_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
-  CONSTRAINT favorites_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
-  CONSTRAINT favorites_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id),
-  CONSTRAINT favorites_unique UNIQUE (customer_id, item_id)
 );

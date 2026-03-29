@@ -8,13 +8,12 @@ import '../models/product_model.dart';
 import '../widget/bubble_button.dart';
 import 'product_detail_screen.dart';
 import '../main.dart';
+import '../services/auth_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // خدمة إدارة المفضلة - للاستخدام من أي صفحة
 // ═══════════════════════════════════════════════════════════════════════════
 class FavoritesService {
-  static int? _currentCustomerId = 1; // مؤقت للاختبار
-
   // StreamController لإرسال إشعارات بالتغييرات
   static final _favoritesChangeController = StreamController<bool>.broadcast();
 
@@ -29,23 +28,19 @@ class FavoritesService {
     }
   }
 
-  static void setCustomerId(int customerId) {
-    _currentCustomerId = customerId;
-  }
-
   static Future<bool> checkIfFavorite(int itemId) async {
-    if (_currentCustomerId == null) return false;
+    final customerId = await AuthService.getCustomerId();
+    if (customerId == null) return false;
 
     try {
       final supabase = Supabase.instance.client;
-      final existing =
-          await supabase
-              .from('favorites')
-              .select('id')
-              .eq('shop_id', SupabaseConfig.shopId)
-              .eq('customer_id', _currentCustomerId!)
-              .eq('item_id', itemId)
-              .maybeSingle();
+      final existing = await supabase
+          .from('favorites')
+          .select('id')
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('customer_id', customerId)
+          .eq('item_id', itemId)
+          .maybeSingle();
 
       return existing != null;
     } catch (e) {
@@ -55,18 +50,18 @@ class FavoritesService {
   }
 
   static Future<bool> toggleFavorite(int itemId) async {
-    if (_currentCustomerId == null) return false;
+    final customerId = await AuthService.getCustomerId();
+    if (customerId == null) return false;
 
     try {
       final supabase = Supabase.instance.client;
-      final existing =
-          await supabase
-              .from('favorites')
-              .select('id')
-              .eq('shop_id', SupabaseConfig.shopId)
-              .eq('customer_id', _currentCustomerId!)
-              .eq('item_id', itemId)
-              .maybeSingle();
+      final existing = await supabase
+          .from('favorites')
+          .select('id')
+          .eq('shop_id', SupabaseConfig.shopId)
+          .eq('customer_id', customerId)
+          .eq('item_id', itemId)
+          .maybeSingle();
 
       if (existing != null) {
         // إزالة من المفضلة
@@ -74,7 +69,7 @@ class FavoritesService {
             .from('favorites')
             .delete()
             .eq('shop_id', SupabaseConfig.shopId)
-            .eq('customer_id', _currentCustomerId!)
+            .eq('customer_id', customerId)
             .eq('item_id', itemId);
 
         // إرسال إشعار بالتغيير
@@ -84,7 +79,7 @@ class FavoritesService {
         // إضافة للمفضلة
         await supabase.from('favorites').insert({
           'shop_id': SupabaseConfig.shopId,
-          'customer_id': _currentCustomerId,
+          'customer_id': customerId,
           'item_id': itemId,
         });
 
@@ -141,11 +136,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   Future<void> _loadFavorites() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
-    final customerId = FavoritesService._currentCustomerId;
+    final customerId = await AuthService.getCustomerId();
     if (customerId == null) {
       print('❌ لا يوجد عميل مسجل');
+      if (!mounted) return;
       setState(() => _isLoading = false);
       return;
     }
@@ -183,10 +180,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           // تحويل الصور
           List<ItemImage> images = [];
           if (itemData['item_images'] != null) {
-            images =
-                (itemData['item_images'] as List)
-                    .map((img) => ItemImage.fromJson(img))
-                    .toList();
+            images = (itemData['item_images'] as List)
+                .map((img) => ItemImage.fromJson(img))
+                .toList();
           }
 
           // إنشاء Item
@@ -204,6 +200,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         }
       }
 
+      if (!mounted) return;
       setState(() {
         _favorites = favoriteItems;
         _isLoading = false;
@@ -212,48 +209,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       print('✅ تم تحميل ${_favorites.length} منتج مفضل');
     } catch (e) {
       print('❌ خطأ في تحميل المفضلات: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
 
-  Future<bool> _addToFavoritesDB(int itemId) async {
-    final customerId = FavoritesService._currentCustomerId;
-    if (customerId == null) {
-      print('❌ لا يوجد عميل مسجل');
-      return false;
-    }
-
-    try {
-      // التحقق من وجوده مسبقاً
-      final existing =
-          await _supabase
-              .from('favorites')
-              .select('id')
-              .eq('shop_id', SupabaseConfig.shopId)
-              .eq('customer_id', customerId)
-              .eq('item_id', itemId)
-              .maybeSingle();
-
-      if (existing != null) {
-        print('⚠️ المنتج موجود بالفعل في المفضلة');
-        return false;
-      }
-
-      await _supabase.from('favorites').insert({
-        'shop_id': SupabaseConfig.shopId,
-        'customer_id': customerId,
-        'item_id': itemId,
-      });
-
-      return true;
-    } catch (e) {
-      print('❌ خطأ في إضافة المنتج للمفضلة: $e');
-      return false;
-    }
-  }
-
   Future<bool> _removeFromFavoritesDB(int itemId) async {
-    final customerId = FavoritesService._currentCustomerId;
+    final customerId = await AuthService.getCustomerId();
     if (customerId == null) return false;
 
     try {
@@ -272,7 +234,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   Future<bool> _clearFavoritesDB() async {
-    final customerId = FavoritesService._currentCustomerId;
+    final customerId = await AuthService.getCustomerId();
     if (customerId == null) return false;
 
     try {
@@ -299,6 +261,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
     if (success) {
       await _loadFavorites();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('تم الحذف من المفضلة', style: GoogleFonts.cairo()),
@@ -315,45 +278,45 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   void _clearAllFavorites() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Text(
-              'حذف جميع المفضلات',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.cairo(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryColor,
-              ),
-            ),
-            content: Text(
-              'هل أنت متأكد من حذف جميع المنتجات المفضلة؟',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.cairo(),
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  'إلغاء',
-                  style: GoogleFonts.cairo(color: Colors.grey),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text('حذف', style: GoogleFonts.cairo(color: Colors.red)),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Text(
+          'حذف جميع المفضلات',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.cairo(
+            fontWeight: FontWeight.bold,
+            color: AppColors.primaryColor,
           ),
+        ),
+        content: Text(
+          'هل أنت متأكد من حذف جميع المنتجات المفضلة؟',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.cairo(),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'إلغاء',
+              style: GoogleFonts.cairo(color: Colors.grey),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('حذف', style: GoogleFonts.cairo(color: Colors.red)),
+          ),
+        ],
+      ),
     );
 
     if (confirm == true) {
       final success = await _clearFavoritesDB();
       if (success) {
         await _loadFavorites();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('تم حذف جميع المفضلات', style: GoogleFonts.cairo()),
@@ -409,50 +372,49 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           ),
           // المحتوى
           Expanded(
-            child:
-                _isLoading
-                    ? Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primaryColor,
-                      ),
-                    )
-                    : _favorites.isEmpty
-                    ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.favorite_border_rounded,
-                            size: 80,
-                            color: AppColors.primaryColor.withOpacity(0.4),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'لا توجد منتجات مفضلة',
-                            style: GoogleFonts.cairo(
-                              color: AppColors.primaryColor,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'ابدأ بإضافة منتجاتك المفضلة',
-                            style: GoogleFonts.cairo(
-                              color: AppColors.primaryColor.withOpacity(0.5),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                    : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(15, 0, 15, 90),
-                      itemCount: _favorites.length,
-                      itemBuilder: (context, index) {
-                        return _buildFavoriteItem(_favorites[index], index);
-                      },
+            child: _isLoading
+                ? Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryColor,
                     ),
+                  )
+                : _favorites.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.favorite_border_rounded,
+                              size: 80,
+                              color: AppColors.primaryColor.withOpacity(0.4),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'لا توجد منتجات مفضلة',
+                              style: GoogleFonts.cairo(
+                                color: AppColors.primaryColor,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'ابدأ بإضافة منتجاتك المفضلة',
+                              style: GoogleFonts.cairo(
+                                color: AppColors.primaryColor.withOpacity(0.5),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(15, 0, 15, 90),
+                        itemCount: _favorites.length,
+                        itemBuilder: (context, index) {
+                          return _buildFavoriteItem(_favorites[index], index);
+                        },
+                      ),
           ),
         ],
       ),
@@ -463,10 +425,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     final itemId = item.id;
     final title = item.title;
     final price = item.price;
-    final imagePath =
-        item.images.isNotEmpty
-            ? item.images.first.imagePath
-            : 'assets/img/main.png';
+    final imagePath = item.images.isNotEmpty
+        ? item.images.first.imagePath
+        : 'assets/img/main.png';
 
     return Dismissible(
       key: Key('favorite_item_$itemId'),
@@ -517,53 +478,50 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 child: SizedBox(
                   width: 70,
                   height: 70,
-                  child:
-                      imagePath.startsWith('http')
-                          ? CachedNetworkImage(
-                            imageUrl: imagePath,
-                            fit: BoxFit.cover,
-                            placeholder:
-                                (context, url) => Container(
-                                  color: AppColors.primaryColor.withOpacity(
-                                    0.08,
-                                  ),
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppColors.primaryColor.withOpacity(
-                                        0.5,
-                                      ),
-                                    ),
-                                  ),
+                  child: imagePath.startsWith('http')
+                      ? CachedNetworkImage(
+                          imageUrl: imagePath,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: AppColors.primaryColor.withOpacity(
+                              0.08,
+                            ),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.primaryColor.withOpacity(
+                                  0.5,
                                 ),
-                            errorWidget:
-                                (context, url, error) => Container(
-                                  color: AppColors.primaryColor.withOpacity(
-                                    0.08,
-                                  ),
-                                  child: Icon(
-                                    Icons.image,
-                                    color: AppColors.primaryColor.withOpacity(
-                                      0.3,
-                                    ),
-                                  ),
-                                ),
-                          )
-                          : Image.asset(
-                            imagePath,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: AppColors.primaryColor.withOpacity(0.08),
-                                child: Icon(
-                                  Icons.image,
-                                  color: AppColors.primaryColor.withOpacity(
-                                    0.3,
-                                  ),
-                                ),
-                              );
-                            },
+                              ),
+                            ),
                           ),
+                          errorWidget: (context, url, error) => Container(
+                            color: AppColors.primaryColor.withOpacity(
+                              0.08,
+                            ),
+                            child: Icon(
+                              Icons.image,
+                              color: AppColors.primaryColor.withOpacity(
+                                0.3,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Image.asset(
+                          imagePath,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: AppColors.primaryColor.withOpacity(0.08),
+                              child: Icon(
+                                Icons.image,
+                                color: AppColors.primaryColor.withOpacity(
+                                  0.3,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ),
               const SizedBox(width: 12),

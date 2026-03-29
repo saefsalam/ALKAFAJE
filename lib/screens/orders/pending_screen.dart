@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utls/constants.dart';
 import '../../models/order_model.dart';
+import '../../services/order_service.dart';
+import 'order_detail_screen.dart';
 
 class PendingScreen extends StatefulWidget {
   const PendingScreen({super.key});
@@ -16,9 +17,6 @@ class _PendingScreenState extends State<PendingScreen> {
   // ═══════════════════════════════════════════════════════════════════════════
   // المتغيرات
   // ═══════════════════════════════════════════════════════════════════════════
-
-  final _supabase = Supabase.instance.client;
-  final String shopId = '550e8400-e29b-41d4-a716-446655440001';
 
   List<Order> _pendingOrders = [];
   bool _isLoading = true;
@@ -34,41 +32,20 @@ class _PendingScreenState extends State<PendingScreen> {
   }
 
   Future<void> _loadOrders() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
-      final ordersData = await _supabase
-          .from('orders')
-          .select('*, customers(name)')
-          .eq('shop_id', shopId)
-          .eq('status', 'pending')
-          .order('created_at', ascending: false);
+      final orders = await OrderService.getMyOrdersByStatus(['pending']);
 
-      List<Order> orders = [];
-      for (var orderData in ordersData) {
-        orders.add(
-          Order(
-            id: orderData['id'],
-            shopId: orderData['shop_id'],
-            customerId: orderData['customer_id'],
-            status: OrderStatusExtension.fromString(orderData['status']),
-            subtotal: (orderData['subtotal'] ?? 0).toDouble(),
-            deliveryFee: (orderData['delivery_fee'] ?? 0).toDouble(),
-            total: (orderData['total'] ?? 0).toDouble(),
-            note: orderData['note'],
-            createdAt: DateTime.parse(orderData['created_at']),
-            updatedAt: DateTime.parse(orderData['updated_at']),
-            customerName: orderData['customers']?['name'],
-          ),
-        );
-      }
-
+      if (!mounted) return;
       setState(() {
         _pendingOrders = orders;
         _isLoading = false;
       });
     } catch (e) {
       print('خطأ في تحميل الطلبات المعلقة: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
@@ -118,7 +95,17 @@ class _PendingScreenState extends State<PendingScreen> {
               final order = pendingOrders[index];
               final dateFormat = DateFormat('yyyy/MM/dd');
 
-              return Container(
+              return GestureDetector(
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => OrderDetailScreen(orderId: order.id),
+                    ),
+                  );
+                  _loadOrders();
+                },
+                child: Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -216,6 +203,7 @@ class _PendingScreenState extends State<PendingScreen> {
                     ),
                   ],
                 ),
+              ),
               );
             },
           ),
