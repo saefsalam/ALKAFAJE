@@ -192,10 +192,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          children: [
           // الخلفية
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
@@ -214,9 +216,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      BubbleButton(
-                        icon: Icons.arrow_back,
-                        onTap: () => Navigator.pop(context),
+                      Row(
+                        children: [
+                          BubbleButton(
+                            icon: Icons.share,
+                            onTap: () {
+                              // مشاركة المنتج
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          BubbleButton(
+                            icon: _isFavorite ? Icons.favorite : Icons.favorite_border,
+                            iconColor: _isFavorite ? Colors.red : AppColors.primaryColor,
+                            onTap: _toggleFavorite,
+                          ),
+                        ],
                       ),
                       Text(
                         "تفاصيل المنتج",
@@ -227,10 +241,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                       ),
                       BubbleButton(
-                        icon: Icons.share,
-                        onTap: () {
-                          // مشاركة المنتج
-                        },
+                        icon: Icons.arrow_forward,
+                        onTap: () => Navigator.pop(context),
                       ),
                     ],
                   ),
@@ -240,7 +252,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // معرض الصور
                       Container(
@@ -437,7 +449,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             // العنوان والسعر
                             Row(
@@ -446,7 +458,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         widget.item.title,
@@ -470,7 +482,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   ),
                                 ),
                                 Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     // السعر
                                     if (widget.item.hasDiscount) ...[
@@ -491,30 +503,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                       Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          // نسبة الخصم
-                                          if (widget.item.discountPercent !=
-                                              null)
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFE53935),
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              child: Text(
-                                                '-${widget.item.discountPercent}%',
-                                                style: GoogleFonts.cairo(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                          const SizedBox(width: 8),
                                           // السعر الجديد
                                           Container(
                                             padding: const EdgeInsets.symmetric(
@@ -544,6 +532,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                               ),
                                             ),
                                           ),
+                                          const SizedBox(width: 8),
+                                          // نسبة الخصم
+                                          if (widget.item.discountPercent !=
+                                              null)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFE53935),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                '-${widget.item.discountPercent}%',
+                                                style: GoogleFonts.cairo(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
                                         ],
                                       ),
                                     ] else
@@ -598,7 +610,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 fontSize: 16,
                                 height: 1.8,
                               ),
-                              textAlign: TextAlign.justify,
+                              textAlign: TextAlign.right,
                             ),
                             const SizedBox(height: 25),
                             // المواصفات
@@ -649,51 +661,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
               child: Row(
                 children: [
-                  // زر الكمية
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: AppColors.primaryColor,
-                        width: 2,
-                      ),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () {
-                            if (_quantity > 1) {
-                              setState(() => _quantity--);
-                            }
-                          },
-                          icon: Icon(
-                            Icons.remove,
-                            color: _quantity > 1
-                                ? AppColors.primaryColor
-                                : Colors.grey,
-                          ),
-                        ),
-                        Text(
-                          '$_quantity',
-                          style: GoogleFonts.cairo(
-                            color: AppColors.primaryColor,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () {
-                            setState(() => _quantity++);
-                          },
-                          icon: const Icon(
-                            Icons.add,
-                            color: AppColors.primaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 15),
                   // زر الإضافة للسلة
                   Expanded(
                     child: ElevatedButton(
@@ -735,13 +702,58 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             ),
                     ),
                   ),
+                  const SizedBox(width: 15),
+                  // زر الكمية
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: AppColors.primaryColor,
+                        width: 2,
+                      ),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            setState(() => _quantity++);
+                          },
+                          icon: const Icon(
+                            Icons.add,
+                            color: AppColors.primaryColor,
+                          ),
+                        ),
+                        Text(
+                          '$_quantity',
+                          style: GoogleFonts.cairo(
+                            color: AppColors.primaryColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            if (_quantity > 1) {
+                              setState(() => _quantity--);
+                            }
+                          },
+                          icon: Icon(
+                            Icons.remove,
+                            color: _quantity > 1
+                                ? AppColors.primaryColor
+                                : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildSpecItem(String label, String value) {
@@ -749,15 +761,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.primaryColor,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
           Text(
             '$label: ',
             style: GoogleFonts.cairo(
@@ -771,6 +774,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             style: GoogleFonts.cairo(
               color: AppColors.primaryColor.withOpacity(0.7),
               fontSize: 16,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.primaryColor,
+              shape: BoxShape.circle,
             ),
           ),
         ],

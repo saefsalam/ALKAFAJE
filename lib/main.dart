@@ -8,6 +8,7 @@ import 'screens/cart_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/product_screen/Product_Screen.dart';
+import 'screens/splash_screen.dart';
 
 // RouteObserver للتتبع عند الدخول والخروج من الشاشات
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
@@ -51,7 +52,7 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const MainScreen(),
+      home: const SplashScreen(),
     );
   }
 }

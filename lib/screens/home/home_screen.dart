@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utls/constants.dart';
 import 'part_items_screen.dart';
 import '../../widget/product_card.dart';
 import '../../widget/bubble_button.dart';
+import 'home_controller.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // الشاشة الرئيسية - كود بسيط بدون widgets خارجية
@@ -24,14 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // المتغيرات
   // ═══════════════════════════════════════════════════════════════════════════
 
-  final _supabase = Supabase.instance.client;
-  final String shopId = '550e8400-e29b-41d4-a716-446655440001';
-
-  // البيانات
-  List<Map<String, dynamic>> _banners = [];
-  List<Map<String, dynamic>> _parts = [];
-
-  bool _isLoading = true;
+  final homeController = Get.find<HomeController>();
   int _currentBannerIndex = 0;
   final PageController _bannerController = PageController();
 
@@ -42,107 +35,17 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // البيانات محملة مسبقاً من السبلاش
+    // إذا لم تكن محملة، نحملها
+    if (homeController.parts.isEmpty && !homeController.isLoading.value) {
+      homeController.loadData();
+    }
   }
 
   @override
   void dispose() {
     _bannerController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadData() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-
-    try {
-      // 1. جلب البانرات
-      final bannersData = await _supabase
-          .from('banner_ads')
-          .select()
-          .eq('shop_id', shopId)
-          .eq('is_active', true)
-          .order('sort_order');
-
-      // 2. جلب البارتات
-      final partsData = await _supabase
-          .from('parts')
-          .select()
-          .eq('shop_id', shopId)
-          .eq('is_active', true)
-          .order('sort_order', ascending: false);
-
-      // 3. لكل بارت، جلب المنتجات
-      List<Map<String, dynamic>> partsWithItems = [];
-
-      for (var part in partsData) {
-        // جلب معرفات المنتجات المرتبطة بالبارت
-        final partItemsData = await _supabase
-            .from('part_items')
-            .select('item_id')
-            .eq('part_id', part['id']);
-
-        List<int> itemIds = (partItemsData as List)
-            .map((e) => e['item_id'] as int)
-            .toList();
-
-        // جلب المنتجات
-        List<Map<String, dynamic>> items = [];
-        if (itemIds.isNotEmpty) {
-          final itemsData = await _supabase
-              .from('items')
-              .select('*, item_images(*)')
-              .inFilter('id', itemIds)
-              .eq('is_active', true)
-              .eq('is_deleted', false);
-          print("itemsData $itemsData");
-          items = itemsData;
-          items = itemsData.map((item) {
-            List images = item['item_images'];
-            images = images.map((img) {
-              img["image_path"] =
-                  "https://ibwawjjqewuikmmnxqgo.supabase.co/storage/v1/object/public/items/${img["image_path"]}";
-              if (img["is_primary"] == true) {
-                item["cover_image"] = img["image_path"];
-              }
-              return;
-            }).toList();
-            item['image_path'] = images.isNotEmpty
-                ? images
-                : 'assets/img/product_placeholder.png';
-            return item;
-          }).toList();
-        }
-        print("items $items");
-        partsWithItems.add({
-          'id': part['id'],
-          'name': part['name'],
-          'items': items,
-        });
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _banners = bannersData.map((data) {
-          data['image_path'] =
-              "https://ibwawjjqewuikmmnxqgo.supabase.co/storage/v1/object/public/ads/${data['image_path']}";
-          return data;
-        }).toList();
-        _parts = partsWithItems;
-        _isLoading = false;
-      });
-
-      // للتصحيح - احذفه لاحقاً
-      print('عدد البانرات: ${_banners.length}');
-      print('عدد البارتات: ${_parts.length}');
-      if (_banners.isNotEmpty) {
-        print('أول بانر: ${_banners[0]}');
-      }
-    } catch (e) {
-      print('خطأ في تحميل البيانات: $e');
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -155,14 +58,14 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: _isLoading
+        body: Obx(() => homeController.isLoading.value
             ? Center(
                 child: CircularProgressIndicator(color: AppColors.primaryColor),
               )
             : SafeArea(
                 bottom: false,
                 child: RefreshIndicator(
-                  onRefresh: _loadData,
+                  onRefresh: homeController.loadData,
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.only(bottom: 100),
                     child: Column(
@@ -185,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // ═══════════════════════════════════════════════════
                         // البانرات
                         // ═══════════════════════════════════════════════════
-                        if (_banners.isNotEmpty) ...[
+                        if (homeController.banners.isNotEmpty) ...[
                           SizedBox(
                             height: 160,
                             child: PageView.builder(
@@ -193,9 +96,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               onPageChanged: (index) {
                                 setState(() => _currentBannerIndex = index);
                               },
-                              itemCount: _banners.length,
+                              itemCount: homeController.banners.length,
                               itemBuilder: (context, index) {
-                                final banner = _banners[index];
+                                final banner = homeController.banners[index];
                                 final bannerImagePath =
                                     banner['image_path'] ??
                                     'assets/img/main.png';
@@ -226,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: List.generate(
-                              _banners.length,
+                              homeController.banners.length,
                               (index) => Container(
                                 margin: const EdgeInsets.symmetric(
                                   horizontal: 4,
@@ -248,7 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // ═══════════════════════════════════════════════════
                         // البارتات (الأقسام)
                         // ═══════════════════════════════════════════════════
-                        ..._parts.map((part) {
+                        ...homeController.parts.map((part) {
                           final items =
                               part['items'] as List<Map<String, dynamic>>;
                           if (items.isEmpty) return const SizedBox.shrink();
@@ -353,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-              ),
+              )),
       ),
     );
   }

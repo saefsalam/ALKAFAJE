@@ -9,6 +9,7 @@ import '../utls/constants.dart';
 import '../screens/product_detail_screen.dart';
 import '../services/auth_service.dart';
 import '../services/local_cart_service.dart';
+import '../screens/favorites_screen.dart';
 import '../main.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -39,6 +40,7 @@ class _ProductCardState extends State<ProductCard> {
   Timer? _autoSlideTimer;
   int _currentPage = 0;
   List<String> _images = [];
+  bool _isFavorite = false;
 
   @override
   void initState() {
@@ -46,6 +48,25 @@ class _ProductCardState extends State<ProductCard> {
     _pageController = PageController();
     _extractImages();
     _startAutoSlide();
+    _checkFavoriteStatus();
+  }
+
+  Future<void> _checkFavoriteStatus() async {
+    final itemId = widget.item is Map ? widget.item['id'] : widget.item.id;
+    final isFav = await FavoritesService.checkIfFavorite(itemId);
+    if (!mounted) return;
+    setState(() {
+      _isFavorite = isFav;
+    });
+  }
+
+  Future<void> _toggleFavorite() async {
+    final itemId = widget.item is Map ? widget.item['id'] : widget.item.id;
+    final newState = await FavoritesService.toggleFavorite(itemId);
+    if (!mounted) return;
+    setState(() {
+      _isFavorite = newState;
+    });
   }
 
   void _extractImages() {
@@ -257,6 +278,34 @@ class _ProductCardState extends State<ProductCard> {
                           ),
                         ),
                       ),
+                    // زر المفضلة
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: GestureDetector(
+                        onTap: _toggleFavorite,
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _isFavorite ? Icons.favorite : Icons.favorite_border,
+                            color: _isFavorite ? Colors.red : Colors.grey[600],
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
