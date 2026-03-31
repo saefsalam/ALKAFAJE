@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'services/notification_service.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
 import 'screens/home/home_screen.dart';
@@ -33,6 +34,8 @@ Future<void> main() async {
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseAnonKey,
   );
+
+  await NotificationService.instance.initialize();
 
   runApp(const MyApp());
 }
@@ -89,10 +92,6 @@ class _MainScreenState extends State<MainScreen> {
           // صورة الخلفية
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
-          ),
-          // الفلتر الأزرق الفاتح
-          Positioned.fill(
-            child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
           ),
           // المحتوى
           IndexedStack(

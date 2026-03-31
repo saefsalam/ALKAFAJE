@@ -36,11 +36,13 @@ class CustomerLocation {
   // تحويل من JSON (قاعدة البيانات)
   factory CustomerLocation.fromJson(Map<String, dynamic> json) {
     // PostgreSQL case-sensitive: الأعمدة في قاعدة البيانات هي L_X و L_y
-    final latitude = (json['L_y'] as num?)?.toDouble() ?? 
-                    (json['l_y'] as num?)?.toDouble() ?? 0.0;
-    final longitude = (json['L_X'] as num?)?.toDouble() ?? 
-                     (json['l_x'] as num?)?.toDouble() ?? 0.0;
-    
+    final latitude = (json['L_y'] as num?)?.toDouble() ??
+        (json['l_y'] as num?)?.toDouble() ??
+        0.0;
+    final longitude = (json['L_X'] as num?)?.toDouble() ??
+        (json['l_x'] as num?)?.toDouble() ??
+        0.0;
+
     return CustomerLocation(
       id: json['id'] as int?,
       shopId: json['shop_id'] as String?,
@@ -68,7 +70,7 @@ class CustomerLocation {
       if (shopId != null) 'shop_id': shopId,
       if (customerId != null) 'customer_id': customerId,
       'name': name,
-      'L_y': latitude,  // استخدام الأسماء الصحيحة من قاعدة البيانات
+      'L_y': latitude, // استخدام الأسماء الصحيحة من قاعدة البيانات
       'L_X': longitude, // استخدام الأسماء الصحيحة من قاعدة البيانات
       if (locationName != null) 'location_name': locationName,
       if (fullAddress != null) 'full_address': fullAddress,

@@ -212,9 +212,7 @@ class OrderService {
           .single();
 
       // جلب عناصر الطلب مع بيانات المنتج والصور
-      final itemsData = await _supabase
-          .from('order_items')
-          .select('''
+      final itemsData = await _supabase.from('order_items').select('''
             id,
             item_id,
             quantity,
@@ -229,9 +227,7 @@ class OrderService {
                 is_primary
               )
             )
-          ''')
-          .eq('order_id', orderId)
-          .order('created_at');
+          ''').eq('order_id', orderId).order('created_at');
 
       // جلب سجل حالات الطلب
       final statusHistory = await _supabase
@@ -283,13 +279,10 @@ class OrderService {
       }
 
       // تحديث الحالة
-      await _supabase
-          .from('orders')
-          .update({
-            'status': 'cancelled',
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', orderId);
+      await _supabase.from('orders').update({
+        'status': 'cancelled',
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', orderId);
 
       // إضافة سجل الحالة
       await _supabase.from('order_status_history').insert({

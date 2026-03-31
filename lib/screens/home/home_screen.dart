@@ -99,8 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               itemCount: homeController.banners.length,
                               itemBuilder: (context, index) {
                                 final banner = homeController.banners[index];
-                                final bannerImagePath =
-                                    banner['image_path'] ??
+                                final bannerImagePath = banner['image_path'] ??
                                     'assets/img/main.png';
                                 return Container(
                                   padding: const EdgeInsets.symmetric(
@@ -115,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       image: bannerImagePath.startsWith('http')
                                           ? NetworkImage(bannerImagePath)
                                           : AssetImage(bannerImagePath)
-                                                as ImageProvider,
+                                              as ImageProvider,
                                       fit: BoxFit.cover,
                                     ),
                                   ),

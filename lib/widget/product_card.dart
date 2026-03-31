@@ -299,7 +299,9 @@ class _ProductCardState extends State<ProductCard> {
                             ],
                           ),
                           child: Icon(
-                            _isFavorite ? Icons.favorite : Icons.favorite_border,
+                            _isFavorite
+                                ? Icons.favorite
+                                : Icons.favorite_border,
                             color: _isFavorite ? Colors.red : Colors.grey[600],
                             size: 18,
                           ),

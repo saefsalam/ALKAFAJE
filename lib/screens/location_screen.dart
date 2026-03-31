@@ -25,12 +25,12 @@ class _LocationScreenState extends State<LocationScreen> {
   // ─── Controllers ────────────────────────────────────────────────────────
   final MapController _mapController = MapController();
   final _formKey = GlobalKey<FormState>();
-  
+
   // Required fields
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _fullAddressController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  
+
   // Optional fields
   final TextEditingController _streetController = TextEditingController();
   final TextEditingController _buildingController = TextEditingController();
@@ -188,9 +188,7 @@ class _LocationScreenState extends State<LocationScreen> {
         }
 
         setState(() {
-          _locationName = address.isNotEmpty
-              ? address
-              : 'موقع على الخريطة';
+          _locationName = address.isNotEmpty ? address : 'موقع على الخريطة';
           // ملء الحقل تلقائياً
           if (_fullAddressController.text.isEmpty) {
             _fullAddressController.text = _locationName;
@@ -199,7 +197,8 @@ class _LocationScreenState extends State<LocationScreen> {
       }
     } catch (e) {
       setState(() {
-        _locationName = 'موقع (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
+        _locationName =
+            'موقع (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
       });
       debugPrint('خطأ في الحصول على اسم الموقع: $e');
     }
@@ -346,9 +345,6 @@ class _LocationScreenState extends State<LocationScreen> {
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
           ),
-          Positioned.fill(
-            child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
-          ),
           // المحتوى
           _isLocationConfirmed ? _buildDetailsForm() : _buildMapView(),
         ],
@@ -369,16 +365,11 @@ class _LocationScreenState extends State<LocationScreen> {
             fit: BoxFit.cover,
           ),
         ),
-        // طبقة شفافة فوق الخلفية
-        Positioned.fill(
-          child: Container(
-            color: Colors.white.withOpacity(0.3),
-          ),
-        ),
         // المحتوى
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 90.0),
+            padding: const EdgeInsets.only(
+                left: 15.0, right: 15.0, top: 5.0, bottom: 90.0),
             child: Column(
               children: [
                 // الهيدر
@@ -432,7 +423,8 @@ class _LocationScreenState extends State<LocationScreen> {
                             ),
                             children: [
                               TileLayer(
-                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                 userAgentPackageName: 'com.alkafage.app',
                               ),
                               if (_selectedPosition != null)
@@ -447,7 +439,9 @@ class _LocationScreenState extends State<LocationScreen> {
                                         size: 50,
                                         color: Colors.red,
                                         shadows: [
-                                          Shadow(blurRadius: 4, color: Colors.black26),
+                                          Shadow(
+                                              blurRadius: 4,
+                                              color: Colors.black26),
                                         ],
                                       ),
                                     ),
@@ -468,7 +462,8 @@ class _LocationScreenState extends State<LocationScreen> {
                           elevation: 8,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(16),
-                            onTap: _isLoadingLocation ? null : _getCurrentLocation,
+                            onTap:
+                                _isLoadingLocation ? null : _getCurrentLocation,
                             child: Container(
                               padding: const EdgeInsets.all(16),
                               child: _isLoadingLocation
@@ -477,7 +472,9 @@ class _LocationScreenState extends State<LocationScreen> {
                                       height: 28,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 3,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
                                       ),
                                     )
                                   : const Icon(
@@ -508,11 +505,14 @@ class _LocationScreenState extends State<LocationScreen> {
                                 children: [
                                   Row(
                                     children: [
-                                      const Icon(Icons.location_on, color: Colors.red, size: 20),
+                                      const Icon(Icons.location_on,
+                                          color: Colors.red, size: 20),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          _locationName.isNotEmpty ? _locationName : 'موقع محدد',
+                                          _locationName.isNotEmpty
+                                              ? _locationName
+                                              : 'موقع محدد',
                                           style: GoogleFonts.cairo(
                                             fontSize: 14,
                                             fontWeight: FontWeight.bold,
@@ -526,11 +526,13 @@ class _LocationScreenState extends State<LocationScreen> {
                                   const SizedBox(height: 4),
                                   Text(
                                     'خط العرض: ${_selectedPosition!.latitude.toStringAsFixed(6)}',
-                                    style: GoogleFonts.cairo(fontSize: 11, color: Colors.grey[600]),
+                                    style: GoogleFonts.cairo(
+                                        fontSize: 11, color: Colors.grey[600]),
                                   ),
                                   Text(
                                     'خط الطول: ${_selectedPosition!.longitude.toStringAsFixed(6)}',
-                                    style: GoogleFonts.cairo(fontSize: 11, color: Colors.grey[600]),
+                                    style: GoogleFonts.cairo(
+                                        fontSize: 11, color: Colors.grey[600]),
                                   ),
                                 ],
                               ),
@@ -570,7 +572,9 @@ class _LocationScreenState extends State<LocationScreen> {
                   style: GoogleFonts.cairo(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: _selectedPosition == null ? Colors.grey[600] : Colors.white,
+                    color: _selectedPosition == null
+                        ? Colors.grey[600]
+                        : Colors.white,
                   ),
                 ),
               ),
@@ -593,16 +597,11 @@ class _LocationScreenState extends State<LocationScreen> {
             fit: BoxFit.cover,
           ),
         ),
-        // طبقة شفافة فوق الخلفية
-        Positioned.fill(
-          child: Container(
-            color: Colors.white.withOpacity(0.3),
-          ),
-        ),
         // المحتوى
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 90.0),
+            padding: const EdgeInsets.only(
+                left: 15.0, right: 15.0, top: 5.0, bottom: 90.0),
             child: Column(
               children: [
                 // الهيدر
@@ -660,7 +659,8 @@ class _LocationScreenState extends State<LocationScreen> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: AppColors.primaryColor.withOpacity(0.2),
+                                  color:
+                                      AppColors.primaryColor.withOpacity(0.2),
                                   width: 2,
                                 ),
                                 boxShadow: [
@@ -678,13 +678,15 @@ class _LocationScreenState extends State<LocationScreen> {
                                   options: MapOptions(
                                     initialCenter: _selectedPosition!,
                                     initialZoom: 15,
-                                    interactionOptions: const InteractionOptions(
+                                    interactionOptions:
+                                        const InteractionOptions(
                                       flags: InteractiveFlag.none,
                                     ),
                                   ),
                                   children: [
                                     TileLayer(
-                                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                      urlTemplate:
+                                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                       userAgentPackageName: 'com.alkafage.app',
                                     ),
                                     MarkerLayer(
@@ -730,7 +732,8 @@ class _LocationScreenState extends State<LocationScreen> {
                             _buildTextField(
                               controller: _fullAddressController,
                               label: 'تفاصيل العنوان *',
-                              hint: 'مثال: حي الكرامة، شارع 20، بجانب مستشفى...',
+                              hint:
+                                  'مثال: حي الكرامة، شارع 20، بجانب مستشفى...',
                               icon: Icons.location_on_outlined,
                               isRequired: true,
                               maxLines: 2,
@@ -846,7 +849,8 @@ class _LocationScreenState extends State<LocationScreen> {
                         height: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : Text(

@@ -33,10 +33,6 @@ class PartItemsScreen extends StatelessWidget {
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
           ),
-          // الفلتر الأزرق الفاتح
-          Positioned.fill(
-            child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
-          ),
           // المحتوى
           items.isEmpty
               ? Center(

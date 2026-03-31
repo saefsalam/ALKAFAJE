@@ -88,14 +88,15 @@ class LocationService {
       }
 
       // إذا لم يكن هناك أي موقع، اجعل هذا الموقع رئيسي تلقائياً
-      final existingLocations = await getCustomerLocations(customerId: customerId);
+      final existingLocations =
+          await getCustomerLocations(customerId: customerId);
       final isFirstLocation = existingLocations.isEmpty;
 
       final locationData = {
         'shop_id': DEFAULT_SHOP_ID,
         'customer_id': customerId,
         'name': name,
-        'L_y': latitude,  // استخدام اسم العمود الصحيح من قاعدة البيانات
+        'L_y': latitude, // استخدام اسم العمود الصحيح من قاعدة البيانات
         'L_X': longitude, // استخدام اسم العمود الصحيح من قاعدة البيانات
         'location_name': locationName,
         'full_address': fullAddress,
@@ -112,7 +113,8 @@ class LocationService {
           .single();
 
       final newLocation = CustomerLocation.fromJson(response);
-      print('✅ تم إضافة موقع جديد: ${newLocation.name} (ID: ${newLocation.id})');
+      print(
+          '✅ تم إضافة موقع جديد: ${newLocation.name} (ID: ${newLocation.id})');
       return newLocation;
     } catch (e) {
       print('❌ خطأ في إضافة الموقع: $e');
@@ -141,7 +143,7 @@ class LocationService {
       };
 
       if (name != null) updateData['name'] = name;
-      if (latitude != null) updateData['L_y'] = latitude;  // اسم العمود الصحيح
+      if (latitude != null) updateData['L_y'] = latitude; // اسم العمود الصحيح
       if (longitude != null) updateData['L_X'] = longitude; // اسم العمود الصحيح
       if (locationName != null) updateData['location_name'] = locationName;
       if (fullAddress != null) updateData['full_address'] = fullAddress;
@@ -153,10 +155,7 @@ class LocationService {
         updateData['is_default'] = true;
       }
 
-      await _supabase
-          .from('location')
-          .update(updateData)
-          .eq('id', locationId);
+      await _supabase.from('location').update(updateData).eq('id', locationId);
 
       print('✅ تم تحديث الموقع $locationId');
       return true;
@@ -182,16 +181,14 @@ class LocationService {
         orElse: () => throw Exception('الموقع غير موجود'),
       );
 
-      await _supabase
-          .from('location')
-          .delete()
-          .eq('id', locationId);
+      await _supabase.from('location').delete().eq('id', locationId);
 
       print('✅ تم حذف الموقع $locationId');
 
       // إذا كان الموقع المحذوف هو الرئيسي، اجعل أول موقع آخر رئيسي
       if (locationToDelete.isDefault && allLocations.length > 1) {
-        final nextLocation = allLocations.firstWhere((loc) => loc.id != locationId);
+        final nextLocation =
+            allLocations.firstWhere((loc) => loc.id != locationId);
         if (nextLocation.id != null) {
           await updateLocation(
             locationId: nextLocation.id!,
@@ -221,13 +218,10 @@ class LocationService {
       await _clearDefaultLocation(customerId: customerId);
 
       // جعل الموقع الحالي رئيسي
-      await _supabase
-          .from('location')
-          .update({
-            'is_default': true,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', locationId);
+      await _supabase.from('location').update({
+        'is_default': true,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', locationId);
 
       print('✅ تم جعل الموقع $locationId رئيسي');
       return true;

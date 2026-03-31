@@ -12,38 +12,39 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
-    
+
     _animationController.forward();
-    
+
     // بدء تحميل البيانات في الخلفية
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
     final homeController = Get.put(HomeController());
-    
+
     // تحميل البيانات
     await homeController.loadData();
-    
+
     // الانتظار ثانية إضافية على الأقل لإظهار الشعار
     await Future.delayed(const Duration(milliseconds: 1500));
-    
+
     // التحقق من حالة التحميل
     if (homeController.hasError.value) {
       // إذا كان هناك خطأ، اذهب لشاشة عدم الاتصال

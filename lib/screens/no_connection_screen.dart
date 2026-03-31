@@ -19,10 +19,6 @@ class NoConnectionScreen extends StatelessWidget {
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
           ),
-          // الفلتر الأزرق الفاتح
-          Positioned.fill(
-            child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
-          ),
           // المحتوى
           Center(
             child: Padding(
@@ -130,7 +126,7 @@ class NoConnectionScreen extends StatelessWidget {
                                   await homeController.loadData();
                                   if (!homeController.hasError.value) {
                                     // الذهاب للشاشة الرئيسية بعد نجاح التحميل
-                                    Get.off(() => const MainScreen(), 
+                                    Get.off(() => const MainScreen(),
                                         transition: Transition.fadeIn);
                                   }
                                 },

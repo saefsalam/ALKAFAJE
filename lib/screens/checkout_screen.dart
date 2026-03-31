@@ -68,7 +68,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final customerId = customerInfo['id'] as int;
 
     // تحميل الموقع الرئيسي
-    final defaultLocation = await LocationService.getDefaultLocation(customerId: customerId);
+    final defaultLocation =
+        await LocationService.getDefaultLocation(customerId: customerId);
 
     if (mounted) {
       setState(() {
@@ -97,7 +98,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _submitOrder() async {
-
     // تأكيد الطلب
     final confirmed = await showDialog<bool>(
       context: context,
@@ -120,7 +120,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               style: GoogleFonts.cairo(fontSize: 15),
             ),
             const SizedBox(height: 16),
-            _buildSummaryRow('المنتجات', '${widget.subtotal.toStringAsFixed(0)} د.ع'),
+            _buildSummaryRow(
+                'المنتجات', '${widget.subtotal.toStringAsFixed(0)} د.ع'),
             const Divider(height: 16),
             _buildSummaryRow(
               'الإجمالي',
@@ -160,8 +161,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() => _isSubmitting = true);
 
     final result = await OrderService.createOrder(
-      note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-      address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+      note: _noteController.text.trim().isEmpty
+          ? null
+          : _noteController.text.trim(),
+      address: _addressController.text.trim().isEmpty
+          ? null
+          : _addressController.text.trim(),
       locationId: _selectedLocation?.id, // إرسال location_id مع الطلب
     );
 
@@ -359,14 +364,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // ─── ملخص المنتجات ───
-                  _buildSectionTitle('المنتجات (${widget.cartItems.length})', Icons.shopping_bag_outlined),
+                  _buildSectionTitle('المنتجات (${widget.cartItems.length})',
+                      Icons.shopping_bag_outlined),
                   const SizedBox(height: 8),
                   _buildProductsSummary(),
 
                   const SizedBox(height: 20),
 
                   // ─── موقع التوصيل ───
-                  _buildSectionTitle('موقع التوصيل', Icons.my_location_outlined),
+                  _buildSectionTitle(
+                      'موقع التوصيل', Icons.my_location_outlined),
                   const SizedBox(height: 8),
                   _buildLocationSelector(),
 
@@ -471,7 +478,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Expanded(
                     child: Text(
                       title,
-                      style: GoogleFonts.cairo(fontSize: 14, color: Colors.black87),
+                      style: GoogleFonts.cairo(
+                          fontSize: 14, color: Colors.black87),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -599,7 +607,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false, bool isLarge = false}) {
+  Widget _buildSummaryRow(String label, String value,
+      {bool isBold = false, bool isLarge = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -652,7 +661,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.check_circle_outline, color: Colors.white, size: 22),
+                  const Icon(Icons.check_circle_outline,
+                      color: Colors.white, size: 22),
                   const SizedBox(width: 8),
                   Text(
                     'تأكيد الطلب • ${_total.toStringAsFixed(0)} د.ع',

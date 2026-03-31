@@ -5,6 +5,7 @@ import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
 import 'addresses/select_location_bottom_sheet.dart';
 import 'auth_screen.dart';
+import 'notifications_screen.dart';
 import 'orders/orders_screen.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -432,7 +433,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'الاشعارات',
             iconColor: AppColors.primaryColor,
             onTap: () {
-              // TODO: فتح شاشة الاشعارات
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationsScreen(),
+                ),
+              );
             },
           ),
 

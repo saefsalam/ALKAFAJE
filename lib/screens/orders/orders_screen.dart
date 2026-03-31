@@ -100,10 +100,6 @@ class _OrdersScreenState extends State<OrdersScreen>
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
           ),
-          // الفلتر الأزرق الفاتح
-          Positioned.fill(
-            child: Container(color: AppColors.primaryColor.withOpacity(0.1)),
-          ),
           // المحتوى
           Padding(
             padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0),

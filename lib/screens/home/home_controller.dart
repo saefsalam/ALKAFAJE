@@ -46,9 +46,8 @@ class HomeController extends GetxController {
             .select('item_id')
             .eq('part_id', part['id']);
 
-        List<int> itemIds = (partItemsData as List)
-            .map((e) => e['item_id'] as int)
-            .toList();
+        List<int> itemIds =
+            (partItemsData as List).map((e) => e['item_id'] as int).toList();
 
         // جلب المنتجات
         List<Map<String, dynamic>> items = [];
@@ -59,7 +58,7 @@ class HomeController extends GetxController {
               .inFilter('id', itemIds)
               .eq('is_active', true)
               .eq('is_deleted', false);
-          
+
           items = (itemsData as List).map((item) {
             List images = item['item_images'] ?? [];
             for (var img in images) {
@@ -88,7 +87,7 @@ class HomeController extends GetxController {
             "https://ibwawjjqewuikmmnxqgo.supabase.co/storage/v1/object/public/ads/${data['image_path']}";
         return data as Map<String, dynamic>;
       }).toList();
-      
+
       parts.value = partsWithItems;
       isLoading.value = false;
 

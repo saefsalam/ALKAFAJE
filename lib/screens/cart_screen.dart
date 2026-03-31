@@ -363,16 +363,11 @@ class _CartScreenState extends State<CartScreen> {
               fit: BoxFit.cover,
             ),
           ),
-          // طبقة شفافة فوق الخلفية
-          Positioned.fill(
-            child: Container(
-              color: Colors.white.withOpacity(0.3),
-            ),
-          ),
           // المحتوى
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 0),
+              padding: const EdgeInsets.only(
+                  left: 15.0, right: 15.0, top: 5.0, bottom: 0),
               child: Column(
                 children: [
                   // الهيدر

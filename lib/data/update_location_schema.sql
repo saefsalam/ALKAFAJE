@@ -4,15 +4,20 @@
 
 -- إضافة الأعمدة الجديدة لجدول location
 ALTER TABLE public.location
-  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS customer_id BIGINT REFERENCES public.customers(id) ON DELETE CASCADE,
-  ADD COLUMN IF NOT EXISTS full_address TEXT,
-  ADD COLUMN IF NOT EXISTS notes TEXT,
-  ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP
+WITH
+    TIME ZONE DEFAULT NOW(),
+ADD COLUMN IF NOT EXISTS customer_id BIGINT REFERENCES public.customers (id) ON DELETE CASCADE,
+ADD COLUMN IF NOT EXISTS full_address TEXT,
+ADD COLUMN IF NOT EXISTS notes TEXT,
+ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
 
 -- إنشاء فهرس للبحث السريع عن مواقع العملاء
-CREATE INDEX IF NOT EXISTS idx_location_customer_id ON public.location(customer_id);
-CREATE INDEX IF NOT EXISTS idx_location_customer_default ON public.location(customer_id, is_default) WHERE is_default = TRUE;
+CREATE INDEX IF NOT EXISTS idx_location_customer_id ON public.location (customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_location_customer_default ON public.location (customer_id, is_default)
+WHERE
+    is_default = TRUE;
 
 -- إنشاء دالة لضمان أن كل عميل لديه موقع رئيسي واحد فقط
 CREATE OR REPLACE FUNCTION enforce_single_default_location()
@@ -34,6 +39,7 @@ $$ LANGUAGE plpgsql;
 
 -- إنشاء Trigger لتطبيق الدالة عند الإدراج أو التحديث
 DROP TRIGGER IF EXISTS trigger_enforce_single_default_location ON public.location;
+
 CREATE TRIGGER trigger_enforce_single_default_location
   BEFORE INSERT OR UPDATE ON public.location
   FOR EACH ROW
@@ -49,6 +55,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_update_location_timestamp ON public.location;
+
 CREATE TRIGGER trigger_update_location_timestamp
   BEFORE UPDATE ON public.location
   FOR EACH ROW
