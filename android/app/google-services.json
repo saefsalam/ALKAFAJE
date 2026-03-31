@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1047442511689",
+    "project_id": "alkafaje-fafbf",
+    "storage_bucket": "alkafaje-fafbf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1047442511689:android:dcd323bc2ca4b4b6a92c98",
+        "android_client_info": {
+          "package_name": "com.example.alkafage"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7dNxJqXpxLKriO3JkswaSq3gGd6inrA8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

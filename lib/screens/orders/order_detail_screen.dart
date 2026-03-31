@@ -186,7 +186,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final items = _orderData!['items'] as List;
     final statusHistory = _orderData!['status_history'] as List;
 
-    final status = OrderStatusExtension.fromString(order['status'] ?? 'pending');
+    final status =
+        OrderStatusExtension.fromString(order['status'] ?? 'pending');
     final customer = order['customers'] as Map<String, dynamic>?;
     final dateFormat = DateFormat('yyyy/MM/dd - hh:mm a');
     final createdAt = DateTime.parse(order['created_at']);
@@ -224,7 +225,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             _buildPriceCard(order),
 
             // ─── ملاحظات ───
-            if (order['note'] != null && (order['note'] as String).isNotEmpty) ...[
+            if (order['note'] != null &&
+                (order['note'] as String).isNotEmpty) ...[
               const SizedBox(height: 16),
               _buildNoteCard(order['note']),
             ],
@@ -374,9 +376,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       height: 24,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isCompleted
-                            ? status.color
-                            : Colors.grey[300],
+                        color: isCompleted ? status.color : Colors.grey[300],
                         border: isCurrent
                             ? Border.all(
                                 color: status.color.withOpacity(0.3),
@@ -589,12 +589,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           const Divider(),
           if (customer != null) ...[
-            _buildInfoRow(Icons.person_outline, 'الاسم', customer['name'] ?? ''),
-            _buildInfoRow(Icons.phone_outlined, 'الهاتف', customer['phone'] ?? ''),
+            _buildInfoRow(
+                Icons.person_outline, 'الاسم', customer['name'] ?? ''),
+            _buildInfoRow(
+                Icons.phone_outlined, 'الهاتف', customer['phone'] ?? ''),
             if (customer['city'] != null)
-              _buildInfoRow(Icons.location_city_outlined, 'المنطقة', customer['city']),
+              _buildInfoRow(
+                  Icons.location_city_outlined, 'المنطقة', customer['city']),
             if (customer['address'] != null)
-              _buildInfoRow(Icons.home_outlined, 'العنوان', customer['address']),
+              _buildInfoRow(
+                  Icons.home_outlined, 'العنوان', customer['address']),
           ],
         ],
       ),
@@ -874,7 +878,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.cancel_outlined, color: Colors.red, size: 20),
+                  const Icon(Icons.cancel_outlined,
+                      color: Colors.red, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     'إلغاء الطلب',

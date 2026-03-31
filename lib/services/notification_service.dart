@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_notification.dart';
 import 'auth_service.dart';
+import 'fcm_service.dart';
 
 class NotificationService {
   NotificationService._();
@@ -29,17 +30,22 @@ class NotificationService {
     if (_initialized) return;
     _initialized = true;
 
+    // تهيئة Firebase Cloud Messaging
+    await FcmService.instance.initialize();
+
     await _loadCachedNotifications();
 
     await _authSubscription?.cancel();
     _authSubscription = _supabase.auth.onAuthStateChange.listen((data) async {
       if (data.event == AuthChangeEvent.signedOut) {
+        await FcmService.instance.deactivateTokenOnLogout();
         await _unsubscribeFromRealtime();
         _setNotifications(const <AppNotification>[]);
         return;
       }
 
       if (AuthService.isLoggedIn) {
+        await FcmService.instance.saveTokenAfterLogin();
         await _loadCachedNotifications();
         await refreshNotifications();
         await _subscribeToOrderUpdates();
@@ -79,9 +85,8 @@ class NotificationService {
 
     final updated = notifications.value
         .map(
-          (item) => item.id == notification.id
-              ? item.copyWith(isRead: true)
-              : item,
+          (item) =>
+              item.id == notification.id ? item.copyWith(isRead: true) : item,
         )
         .toList();
 
@@ -90,10 +95,8 @@ class NotificationService {
 
     if (notification.databaseId != null) {
       try {
-        await _supabase
-            .from('customer_notifications')
-            .update({'is_read': true})
-            .eq('id', notification.databaseId as Object);
+        await _supabase.from('customer_notifications').update(
+            {'is_read': true}).eq('id', notification.databaseId as Object);
       } catch (_) {
         // fallback cache remains the source of truth if the table is not applied yet
       }
@@ -103,9 +106,8 @@ class NotificationService {
   Future<void> markAllAsRead() async {
     if (notifications.value.isEmpty) return;
 
-    final updated = notifications.value
-        .map((item) => item.copyWith(isRead: true))
-        .toList();
+    final updated =
+        notifications.value.map((item) => item.copyWith(isRead: true)).toList();
 
     _setNotifications(updated);
     await _saveCachedNotifications();
@@ -121,8 +123,7 @@ class NotificationService {
     try {
       await _supabase
           .from('customer_notifications')
-          .update({'is_read': true})
-          .inFilter('id', backendIds);
+          .update({'is_read': true}).inFilter('id', backendIds);
     } catch (_) {
       // backend schema may not be applied yet
     }
@@ -171,7 +172,8 @@ class NotificationService {
     try {
       final data = await _supabase
           .from('order_status_history')
-          .select('id, order_id, status, notes, created_at, orders!inner(customer_id)')
+          .select(
+              'id, order_id, status, notes, created_at, orders!inner(customer_id)')
           .eq('orders.customer_id', customerId)
           .order('created_at', ascending: false)
           .limit(100);
@@ -234,7 +236,8 @@ class NotificationService {
     try {
       final decoded = jsonDecode(raw) as List<dynamic>;
       final cached = decoded
-          .map((item) => AppNotification.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              AppNotification.fromJson(Map<String, dynamic>.from(item)))
           .toList();
       _setNotifications(cached);
     } catch (e) {

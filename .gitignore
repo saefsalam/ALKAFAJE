@@ -43,6 +43,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+
+# Dashboard build
+alkhafajdashboard/build/
+alkhafajdashboard/.dart_tool/
+alkhafajdashboard/.flutter-plugins
+alkhafajdashboard/.flutter-plugins-dependencies
 
 # Environment variables
 .env
