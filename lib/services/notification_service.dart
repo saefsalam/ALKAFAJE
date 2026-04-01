@@ -24,6 +24,7 @@ class NotificationService {
 
   StreamSubscription<AuthState>? _authSubscription;
   RealtimeChannel? _statusHistoryChannel;
+  RealtimeChannel? _customerNotificationsChannel;
   bool _initialized = false;
 
   Future<void> initialize() async {
@@ -49,12 +50,14 @@ class NotificationService {
         await _loadCachedNotifications();
         await refreshNotifications();
         await _subscribeToOrderUpdates();
+        await _subscribeToCustomerNotifications();
       }
     });
 
     if (AuthService.isLoggedIn) {
       await refreshNotifications();
       await _subscribeToOrderUpdates();
+      await _subscribeToCustomerNotifications();
     }
   }
 
@@ -212,10 +215,39 @@ class NotificationService {
         .subscribe();
   }
 
+  Future<void> _subscribeToCustomerNotifications() async {
+    if (!AuthService.isLoggedIn) return;
+
+    final customerId = await AuthService.getCustomerId();
+    if (customerId == null) return;
+
+    _customerNotificationsChannel = _supabase
+        .channel('customer_notifications_$customerId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'customer_notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'customer_id',
+            value: customerId,
+          ),
+          callback: (_) {
+            refreshNotifications(showBannerForNew: true);
+          },
+        )
+        .subscribe();
+  }
+
   Future<void> _unsubscribeFromRealtime() async {
     if (_statusHistoryChannel != null) {
       await _supabase.removeChannel(_statusHistoryChannel!);
       _statusHistoryChannel = null;
+    }
+
+    if (_customerNotificationsChannel != null) {
+      await _supabase.removeChannel(_customerNotificationsChannel!);
+      _customerNotificationsChannel = null;
     }
   }
 

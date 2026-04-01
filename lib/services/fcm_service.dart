@@ -19,7 +19,10 @@ import 'auth_service.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint('🔔 إشعار في الخلفية: ${message.notification?.title}');
+  debugPrint('🔔 [FCM][BG] messageId=${message.messageId}');
+  debugPrint('🔔 [FCM][BG] title=${message.notification?.title}');
+  debugPrint('🔔 [FCM][BG] body=${message.notification?.body}');
+  debugPrint('🔔 [FCM][BG] data=${message.data}');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -29,7 +32,7 @@ class FcmService {
   FcmService._();
   static final FcmService instance = FcmService._();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  FirebaseMessaging get _messaging => FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
@@ -66,9 +69,11 @@ class FcmService {
     if (_initialized) return;
 
     // 1. تهيئة Firebase
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
 
     // 2. معالج الإشعارات في الخلفية
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -167,6 +172,8 @@ class FcmService {
       if (_currentToken != null) {
         debugPrint('🔑 FCM Token: ${_currentToken!.substring(0, 20)}...');
         await _saveTokenToDatabase(_currentToken!);
+      } else {
+        debugPrint('⚠️ [FCM] getToken رجع null');
       }
     } catch (e) {
       debugPrint('❌ خطأ في الحصول على FCM Token: $e');
@@ -263,7 +270,7 @@ class FcmService {
 
   void _setupForegroundListener() {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('🔔 إشعار والتطبيق مفتوح: ${message.notification?.title}');
+      _logIncomingMessage(message, source: 'FOREGROUND');
 
       final notification = message.notification;
       if (notification == null) return;
@@ -326,18 +333,23 @@ class FcmService {
 
   void _setupInteractionHandlers() {
     // عند النقر على الإشعار والتطبيق بالخلفية
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      _logIncomingMessage(message, source: 'OPENED_APP');
+      _handleNotificationTap(message);
+    });
 
     // عند فتح التطبيق من إشعار (التطبيق كان مغلقاً)
     _messaging.getInitialMessage().then((message) {
       if (message != null) {
+        _logIncomingMessage(message, source: 'INITIAL_MESSAGE');
         _handleNotificationTap(message);
       }
     });
   }
 
   void _handleNotificationTap(RemoteMessage message) {
-    debugPrint('👆 تم النقر على إشعار: ${message.data}');
+    debugPrint('👆 [FCM] تم النقر على إشعار: messageId=${message.messageId}');
+    debugPrint('👆 [FCM] payload=${message.data}');
 
     final orderId = message.data['order_id'];
     if (orderId != null) {
@@ -366,4 +378,13 @@ class FcmService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   String? get currentToken => _currentToken;
+
+  void _logIncomingMessage(RemoteMessage message, {required String source}) {
+    debugPrint('📩 [FCM][$source] messageId=${message.messageId}');
+    debugPrint('📩 [FCM][$source] sentTime=${message.sentTime}');
+    debugPrint('📩 [FCM][$source] from=${message.from}');
+    debugPrint('📩 [FCM][$source] title=${message.notification?.title}');
+    debugPrint('📩 [FCM][$source] body=${message.notification?.body}');
+    debugPrint('📩 [FCM][$source] data=${message.data}');
+  }
 }

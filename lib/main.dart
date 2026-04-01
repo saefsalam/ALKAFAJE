@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'firebase_options.dart';
 import 'services/notification_service.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
@@ -28,6 +30,12 @@ class SupabaseConfig {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 
   // تهيئة Supabase
   await Supabase.initialize(
