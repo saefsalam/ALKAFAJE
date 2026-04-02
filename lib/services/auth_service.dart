@@ -21,6 +21,90 @@ class AuthService {
   static String? get userEmail => currentUser?.email;
   static String? get authUserId => currentUser?.id;
 
+  static String _fallbackCustomerName(User user) {
+    final dynamic fullName = user.userMetadata?['full_name'];
+    if (fullName is String && fullName.trim().isNotEmpty) {
+      return fullName.trim();
+    }
+
+    final String? email = user.email;
+    if (email != null && email.contains('@')) {
+      final String prefix = email.split('@').first.trim();
+      if (prefix.isNotEmpty) {
+        return prefix;
+      }
+    }
+
+    return 'عميل';
+  }
+
+  static String? _extractPhone(User user) {
+    final dynamic phone = user.userMetadata?['phone'];
+    if (phone is String && phone.trim().isNotEmpty) {
+      return phone.trim();
+    }
+
+    if (user.phone != null && user.phone!.trim().isNotEmpty) {
+      return user.phone!.trim();
+    }
+
+    return null;
+  }
+
+  static Future<int?> _ensureCustomerRecordForCurrentUser() async {
+    if (!isLoggedIn) {
+      return null;
+    }
+
+    final User user = currentUser!;
+    try {
+      final existing = await _supabase
+          .from('customers')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+
+      if (existing != null) {
+        return existing['id'] as int;
+      }
+
+      final Map<String, dynamic> payload = {
+        'shop_id': DEFAULT_SHOP_ID,
+        'name': _fallbackCustomerName(user),
+        'auth_user_id': user.id,
+      };
+
+      final String? phone = _extractPhone(user);
+      if (phone != null && phone.isNotEmpty) {
+        payload['phone'] = phone;
+      }
+
+      final created = await _supabase
+          .from('customers')
+          .insert(payload)
+          .select('id')
+          .single();
+
+      print('✅ تم إنشاء سجل عميل تلقائياً - customer_id: ${created['id']}');
+      return created['id'] as int;
+    } on PostgrestException catch (e) {
+      // في حال سبق إنشاؤه من جلسة ثانية، نعيد جلبه.
+      if (e.code == '23505') {
+        final existing = await _supabase
+            .from('customers')
+            .select('id')
+            .eq('auth_user_id', user.id)
+            .maybeSingle();
+        return existing?['id'] as int?;
+      }
+      print('❌ خطأ في ضمان سجل العميل: ${e.message}');
+      return null;
+    } catch (e) {
+      print('❌ خطأ في ضمان سجل العميل: $e');
+      return null;
+    }
+  }
+
   // تسجيل مستخدم جديد
   static Future<AuthResponse?> signUp({
     required String email,
@@ -147,13 +231,7 @@ class AuthService {
     if (!isLoggedIn) return null;
 
     try {
-      final response = await _supabase
-          .from('customers')
-          .select('id')
-          .eq('auth_user_id', authUserId!)
-          .maybeSingle();
-
-      return response?['id'] as int?;
+      return await _ensureCustomerRecordForCurrentUser();
     } catch (e) {
       print('❌ خطأ في الحصول على customer_id: $e');
       return null;
@@ -538,6 +616,8 @@ class AuthService {
           title,
           description,
           price,
+          discount_price,
+          discount_percent,
           item_images (
             image_path,
             is_primary

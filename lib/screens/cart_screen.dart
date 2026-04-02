@@ -31,6 +31,26 @@ class _CartScreenState extends State<CartScreen> {
   double _totalPrice = 0;
   bool _isLoggedIn = false;
 
+  double _resolveEffectivePrice(Map<String, dynamic> item) {
+    final double basePrice = (item['price'] as num).toDouble();
+    final num? discountPriceRaw = item['discount_price'] as num?;
+    final int discountPercent =
+        (item['discount_percent'] as num?)?.toInt() ?? 0;
+
+    if (discountPriceRaw != null) {
+      final double discountPrice = discountPriceRaw.toDouble();
+      if (discountPrice > 0 && discountPrice < basePrice) {
+        return discountPrice;
+      }
+    }
+
+    if (discountPercent > 0 && discountPercent < 100) {
+      return basePrice * (1 - (discountPercent / 100));
+    }
+
+    return basePrice;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // دوال تحميل السلة (محلية أو قاعدة بيانات)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -88,12 +108,12 @@ class _CartScreenState extends State<CartScreen> {
         // البيانات من قاعدة البيانات
         final item = cartItem['items'];
         if (item != null) {
-          final price = (item['price'] as num).toDouble();
+          final price = _resolveEffectivePrice(item);
           total += price * quantity;
         }
       } else {
         // البيانات المحلية
-        final price = (cartItem['price'] as num).toDouble();
+        final price = _resolveEffectivePrice(cartItem);
         total += price * quantity;
       }
     }
@@ -505,6 +525,8 @@ class _CartScreenState extends State<CartScreen> {
     final String title;
     final String? imagePath;
     final double price;
+    double originalPrice;
+    int discountPercent = 0;
     final int quantity = cartItem['quantity'] as int;
 
     if (_isLoggedIn) {
@@ -512,7 +534,9 @@ class _CartScreenState extends State<CartScreen> {
       itemId = cartItem['item_id'] as int;
       final item = cartItem['items'];
       title = item['title'] ?? 'منتج غير معروف';
-      price = (item['price'] as num).toDouble();
+      price = _resolveEffectivePrice(item);
+      originalPrice = (item['price'] as num).toDouble();
+      discountPercent = (item['discount_percent'] as num?)?.toInt() ?? 0;
 
       // الصورة الأساسية
       final images = item['item_images'] as List?;
@@ -526,7 +550,9 @@ class _CartScreenState extends State<CartScreen> {
       // بيانات محلية
       itemId = cartItem['id'] as int;
       title = cartItem['title'] ?? 'منتج غير معروف';
-      price = (cartItem['price'] as num).toDouble();
+      price = _resolveEffectivePrice(cartItem);
+      originalPrice = (cartItem['price'] as num).toDouble();
+      discountPercent = (cartItem['discount_percent'] as num?)?.toInt() ?? 0;
       imagePath = cartItem['image'];
     }
 
@@ -612,13 +638,50 @@ class _CartScreenState extends State<CartScreen> {
                   const SizedBox(height: 5),
 
                   // السعر
-                  Text(
-                    '$price IQD',
-                    style: GoogleFonts.cairo(
-                      fontSize: 14,
-                      color: AppColors.primaryColor,
-                      fontWeight: FontWeight.w600,
+                  if (price < originalPrice) ...[
+                    Text(
+                      '${originalPrice.toStringAsFixed(0)} IQD',
+                      style: GoogleFonts.cairo(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                        decoration: TextDecoration.lineThrough,
+                      ),
                     ),
+                    const SizedBox(height: 2),
+                  ],
+                  Row(
+                    children: [
+                      Text(
+                        '${price.toStringAsFixed(0)} IQD',
+                        style: GoogleFonts.cairo(
+                          fontSize: 14,
+                          color: AppColors.primaryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (discountPercent > 0 && price < originalPrice) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: Text(
+                            '-$discountPercent%',
+                            style: GoogleFonts.cairo(
+                              fontSize: 11,
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
 
                   const SizedBox(height: 8),

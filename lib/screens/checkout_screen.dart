@@ -27,6 +27,26 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
+  double _resolveEffectivePrice(Map<String, dynamic> item) {
+    final double basePrice = (item['price'] as num).toDouble();
+    final num? discountPriceRaw = item['discount_price'] as num?;
+    final int discountPercent =
+        (item['discount_percent'] as num?)?.toInt() ?? 0;
+
+    if (discountPriceRaw != null) {
+      final double discountPrice = discountPriceRaw.toDouble();
+      if (discountPrice > 0 && discountPrice < basePrice) {
+        return discountPrice;
+      }
+    }
+
+    if (discountPercent > 0 && discountPercent < 100) {
+      return basePrice * (1 - (discountPercent / 100));
+    }
+
+    return basePrice;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // المتغيرات
   // ═══════════════════════════════════════════════════════════════════════════
@@ -448,7 +468,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
             final title = item['title'] ?? 'منتج';
             final quantity = cartItem['quantity'] as int;
-            final unitPrice = (item['price'] as num).toDouble();
+            final unitPrice = _resolveEffectivePrice(item);
             final lineTotal = unitPrice * quantity;
 
             return Padding(

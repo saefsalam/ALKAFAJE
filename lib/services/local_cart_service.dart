@@ -201,6 +201,8 @@ class LocalCartService {
                 title,
                 description,
                 price,
+                discount_price,
+                discount_percent,
                 item_images (
                   image_path,
                   is_primary
@@ -224,6 +226,8 @@ class LocalCartService {
             'title': itemData['title'],
             'description': itemData['description'],
             'price': itemData['price'],
+            'discount_price': itemData['discount_price'],
+            'discount_percent': itemData['discount_percent'],
             'image': imagePath,
           });
         } catch (e) {

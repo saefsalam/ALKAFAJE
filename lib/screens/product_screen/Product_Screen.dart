@@ -217,6 +217,10 @@ class _ProductScreenState extends State<ProductScreen> {
           title: product['title'], // ✅ اسم العمود الصحيح
           description: product['description'],
           price: (product['price'] as num).toDouble(),
+          discountPrice: product['discount_price'] != null
+              ? (product['discount_price'] as num).toDouble()
+              : null,
+          discountPercent: (product['discount_percent'] as num?)?.toInt(),
           categoryId: product['category_id'],
           isActive: product['is_active'] ?? true,
           isDeleted: product['is_deleted'] ?? false,
@@ -306,6 +310,10 @@ class _ProductScreenState extends State<ProductScreen> {
           title: product['title'],
           description: product['description'],
           price: (product['price'] as num).toDouble(),
+          discountPrice: product['discount_price'] != null
+              ? (product['discount_price'] as num).toDouble()
+              : null,
+          discountPercent: (product['discount_percent'] as num?)?.toInt(),
           categoryId: product['category_id'],
           isActive: product['is_active'] ?? true,
           isDeleted: product['is_deleted'] ?? false,

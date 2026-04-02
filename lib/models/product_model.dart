@@ -16,8 +16,8 @@ class Category {
     this.icon,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) : createdAt = createdAt ?? DateTime.now(),
-       updatedAt = updatedAt ?? DateTime.now();
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 
   // تحويل من JSON
   factory Category.fromJson(Map<String, dynamic> json) {
@@ -26,14 +26,12 @@ class Category {
       shopId: json['shop_id'],
       name: json['name'],
       icon: json['icon'],
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
     );
   }
 
@@ -78,10 +76,9 @@ class ItemImage {
       imagePath: json['image_path'],
       sortOrder: json['sort_order'] ?? 1,
       isPrimary: json['is_primary'] ?? false,
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
     );
   }
 
@@ -184,14 +181,40 @@ class Item {
     DateTime? updatedAt,
     this.category,
     this.images = const [],
-  }) : createdAt = createdAt ?? DateTime.now(),
-       updatedAt = updatedAt ?? DateTime.now();
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 
   // هل المنتج عليه تخفيض؟
-  bool get hasDiscount => discountPrice != null && discountPrice! < price;
+  bool get hasDiscount => finalPrice < price;
+
+  // نسبة التخفيض الفعلية (من الحقل مباشرة أو محسوبة تلقائياً من الأسعار)
+  int? get effectiveDiscountPercent {
+    final int? fromField = discountPercent;
+    if (fromField != null && fromField > 0) {
+      return fromField;
+    }
+
+    if (discountPrice != null && discountPrice! < price && price > 0) {
+      final double percent = ((price - discountPrice!) / price) * 100;
+      return percent.round();
+    }
+
+    return null;
+  }
 
   // السعر النهائي (بعد التخفيض إن وجد)
-  double get finalPrice => discountPrice ?? price;
+  double get finalPrice {
+    if (discountPrice != null && discountPrice! < price) {
+      return discountPrice!;
+    }
+
+    final int? percent = discountPercent;
+    if (percent != null && percent > 0 && percent < 100) {
+      return price * (1 - (percent / 100));
+    }
+
+    return price;
+  }
 
   // هل المنتج من منتجات رمضان؟
   bool get isRamadan => tags.contains(ItemTag.ramadan);
@@ -210,16 +233,14 @@ class Item {
     // معالجة الصور من JSON أو من parameter
     List<ItemImage> itemImages = images ?? [];
     if (itemImages.isEmpty && json['images'] != null) {
-      itemImages =
-          (json['images'] as List)
-              .map((img) => ItemImage.fromJson(img))
-              .toList();
+      itemImages = (json['images'] as List)
+          .map((img) => ItemImage.fromJson(img))
+          .toList();
     }
     if (itemImages.isEmpty && json['item_images'] != null) {
-      itemImages =
-          (json['item_images'] as List)
-              .map((img) => ItemImage.fromJson(img))
-              .toList();
+      itemImages = (json['item_images'] as List)
+          .map((img) => ItemImage.fromJson(img))
+          .toList();
     }
 
     return Item(
@@ -229,32 +250,30 @@ class Item {
       title: json['title'],
       description: json['description'],
       price: (json['price'] as num).toDouble(),
-      discountPrice:
-          json['discount_price'] != null
-              ? (json['discount_price'] as num).toDouble()
-              : null,
-      discountPercent: json['discount_percent'],
-      tags:
-          json['tags'] != null
-              ? (json['tags'] as List)
-                  .map(
-                    (t) => ItemTag.values.firstWhere(
-                      (e) => e.name == t,
-                      orElse: () => ItemTag.featured,
-                    ),
-                  )
-                  .toList()
-              : [],
+      discountPrice: json['discount_price'] != null
+          ? (json['discount_price'] as num).toDouble()
+          : null,
+      discountPercent: json['discount_percent'] != null
+          ? (json['discount_percent'] as num).round()
+          : null,
+      tags: json['tags'] != null
+          ? (json['tags'] as List)
+              .map(
+                (t) => ItemTag.values.firstWhere(
+                  (e) => e.name == t,
+                  orElse: () => ItemTag.featured,
+                ),
+              )
+              .toList()
+          : [],
       isActive: json['is_active'] ?? true,
       isDeleted: json['is_deleted'] ?? false,
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
       category:
           json['category'] != null ? Category.fromJson(json['category']) : null,
       images: itemImages,
@@ -298,9 +317,7 @@ class Item {
 
   // تنسيق السعر
   String get formattedPrice {
-    return price
-        .toStringAsFixed(0)
-        .replaceAllMapped(
+    return price.toStringAsFixed(0).replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
           (Match m) => '${m[1]},',
         );
@@ -308,9 +325,7 @@ class Item {
 
   // تنسيق السعر النهائي
   String get formattedFinalPrice {
-    return finalPrice
-        .toStringAsFixed(0)
-        .replaceAllMapped(
+    return finalPrice.toStringAsFixed(0).replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
           (Match m) => '${m[1]},',
         );
@@ -319,9 +334,7 @@ class Item {
   // تنسيق سعر التخفيض
   String get formattedDiscountPrice {
     if (discountPrice == null) return formattedPrice;
-    return discountPrice!
-        .toStringAsFixed(0)
-        .replaceAllMapped(
+    return discountPrice!.toStringAsFixed(0).replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
           (Match m) => '${m[1]},',
         );
@@ -356,8 +369,8 @@ class Shop {
     this.instagramUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) : createdAt = createdAt ?? DateTime.now(),
-       updatedAt = updatedAt ?? DateTime.now();
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 
   factory Shop.fromJson(Map<String, dynamic> json) {
     return Shop(
@@ -370,14 +383,12 @@ class Shop {
       primaryLanguage: json['primary_language'] ?? 'ar',
       facebookUrl: json['facebook_url'],
       instagramUrl: json['instagram_url'],
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
     );
   }
 
@@ -418,8 +429,8 @@ class BannerAd {
     this.isActive = true,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) : createdAt = createdAt ?? DateTime.now(),
-       updatedAt = updatedAt ?? DateTime.now();
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 
   factory BannerAd.fromJson(Map<String, dynamic> json) {
     return BannerAd(
@@ -428,14 +439,12 @@ class BannerAd {
       imagePath: json['image_path'],
       sortOrder: json['sort_order'] ?? 1,
       isActive: json['is_active'] ?? true,
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
     );
   }
 
@@ -470,8 +479,8 @@ class DeliveryZone {
     this.price = 0,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) : createdAt = createdAt ?? DateTime.now(),
-       updatedAt = updatedAt ?? DateTime.now();
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 
   factory DeliveryZone.fromJson(Map<String, dynamic> json) {
     return DeliveryZone(
@@ -479,14 +488,12 @@ class DeliveryZone {
       shopId: json['shop_id'],
       city: json['city'],
       price: (json['price'] as num).toDouble(),
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
     );
   }
 
@@ -502,9 +509,7 @@ class DeliveryZone {
   }
 
   String get formattedPrice {
-    return price
-        .toStringAsFixed(0)
-        .replaceAllMapped(
+    return price.toStringAsFixed(0).replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
           (Match m) => '${m[1]},',
         );
@@ -565,8 +570,8 @@ class Part {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.items = const [],
-  }) : createdAt = createdAt ?? DateTime.now(),
-       updatedAt = updatedAt ?? DateTime.now();
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
 
   // تحويل من JSON
   factory Part.fromJson(Map<String, dynamic> json, {List<Item>? items}) {
@@ -576,14 +581,12 @@ class Part {
       name: json['name'],
       sortOrder: json['sort_order'] ?? 1,
       isActive: json['is_active'] ?? true,
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
       items: items ?? [],
     );
   }
@@ -647,10 +650,9 @@ class PartItem {
       id: json['id'],
       partId: json['part_id'],
       itemId: json['item_id'],
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : DateTime.now(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
     );
   }
 

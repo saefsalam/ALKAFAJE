@@ -147,13 +147,20 @@ class _ProductCardState extends State<ProductCard> {
         : widget.item.description;
     final dynamic price =
         widget.item is Map ? widget.item['price'] : widget.item.price;
-    final dynamic discountPrice = widget.item is Map
-        ? widget.item['discount_price']
-        : widget.item.discountPrice;
     final int? discountPercent = widget.item is Map
         ? widget.item['discount_percent']
         : widget.item.discountPercent;
-    final bool hasDiscount = discountPrice != null && discountPrice < price;
+    final Item? mapItem =
+        widget.item is Map ? Item.fromJson(widget.item) : null;
+    final double basePrice = (price as num).toDouble();
+    final int discountPercentValue = (discountPercent as num?)?.toInt() ?? 0;
+    final double effectivePrice =
+        (widget.item is Map ? mapItem!.finalPrice : widget.item.finalPrice)
+            .toDouble();
+    final int? effectiveDiscountPercent = widget.item is Map
+        ? mapItem!.effectiveDiscountPercent
+        : widget.item.effectiveDiscountPercent;
+    final bool hasDiscount = effectivePrice < basePrice;
 
     return GestureDetector(
       onTap: widget.onTap ??
@@ -247,32 +254,34 @@ class _ProductCardState extends State<ProductCard> {
                         },
                       ),
                     ),
-                    // بادج الخصم
-                    if (hasDiscount && discountPercent != null)
+                    // شريط التخفيض العلوي
+                    if (hasDiscount)
                       Positioned(
-                        top: 8,
-                        right: 8,
+                        top: 0,
+                        right: 0,
+                        left: 0,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
+                          height: 24,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE53935),
-                            borderRadius: BorderRadius.circular(8),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFD32F2F), Color(0xFFE53935)],
+                              begin: Alignment.centerRight,
+                              end: Alignment.centerLeft,
+                            ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
+                                color: Colors.black.withOpacity(0.2),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),
                             ],
                           ),
                           child: Text(
-                            '-$discountPercent%',
+                            'خصم ${effectiveDiscountPercent ?? discountPercentValue}%',
                             style: GoogleFonts.cairo(
                               color: Colors.white,
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -357,7 +366,7 @@ class _ProductCardState extends State<ProductCard> {
                       children: [
                         // السعر القديم مشطوب
                         Text(
-                          '${price is double ? price.toStringAsFixed(0) : price} د.ع',
+                          '${basePrice.toStringAsFixed(0)} د.ع',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.cairo(
                             color: Colors.grey[500],
@@ -370,7 +379,7 @@ class _ProductCardState extends State<ProductCard> {
                         ),
                         // السعر الجديد
                         Text(
-                          '${discountPrice is double ? discountPrice.toStringAsFixed(0) : discountPrice} د.ع',
+                          '${effectivePrice.toStringAsFixed(0)} د.ع',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.cairo(
                             color: const Color(0xFFE53935),
@@ -383,7 +392,7 @@ class _ProductCardState extends State<ProductCard> {
                     )
                   else
                     Text(
-                      '${price is double ? price.toStringAsFixed(0) : price} د.ع',
+                      '${basePrice.toStringAsFixed(0)} د.ع',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.cairo(
                         color: AppColors.primaryColor,
@@ -400,7 +409,11 @@ class _ProductCardState extends State<ProductCard> {
                     itemId:
                         widget.item is Map ? widget.item['id'] : widget.item.id,
                     title: title,
-                    price: price,
+                    price: effectivePrice,
+                    originalPrice: hasDiscount ? basePrice : null,
+                    discountPercent: hasDiscount
+                        ? (effectiveDiscountPercent ?? discountPercentValue)
+                        : null,
                     imagePath:
                         _images.isNotEmpty ? _images[0] : 'assets/img/main.png',
                     description: description,
@@ -421,7 +434,9 @@ class _ProductCardState extends State<ProductCard> {
 class _AddToCartButton extends StatefulWidget {
   final int itemId;
   final String title;
-  final dynamic price;
+  final double price;
+  final double? originalPrice;
+  final int? discountPercent;
   final String imagePath;
   final String? description;
 
@@ -429,6 +444,8 @@ class _AddToCartButton extends StatefulWidget {
     required this.itemId,
     required this.title,
     required this.price,
+    this.originalPrice,
+    this.discountPercent,
     required this.imagePath,
     this.description,
   });
@@ -702,13 +719,52 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
                 const SizedBox(height: 10),
 
                 // السعر
-                Text(
-                  '${widget.price is double ? widget.price.toStringAsFixed(0) : widget.price} د.ع',
-                  style: GoogleFonts.cairo(
-                    color: AppColors.primaryColor,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                if (widget.originalPrice != null) ...[
+                  Text(
+                    '${widget.originalPrice!.toStringAsFixed(0)} د.ع',
+                    style: GoogleFonts.cairo(
+                      color: Colors.grey[500],
+                      fontSize: 14,
+                      decoration: TextDecoration.lineThrough,
+                    ),
                   ),
+                  const SizedBox(height: 4),
+                ],
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${widget.price.toStringAsFixed(0)} د.ع',
+                      style: GoogleFonts.cairo(
+                        color: AppColors.primaryColor,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (widget.discountPercent != null &&
+                        widget.discountPercent! > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Text(
+                          '-${widget.discountPercent}%',
+                          style: GoogleFonts.cairo(
+                            color: Colors.red.shade700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
 
                 const SizedBox(height: 20),
@@ -793,7 +849,7 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
 
                 // المجموع
                 Text(
-                  'المجموع: ${((widget.price is double ? widget.price : (widget.price as num).toDouble()) * selectedQuantity).toStringAsFixed(0)} د.ع',
+                  'المجموع: ${(widget.price * selectedQuantity).toStringAsFixed(0)} د.ع',
                   style: GoogleFonts.cairo(
                     color: Colors.grey[700],
                     fontSize: 16,

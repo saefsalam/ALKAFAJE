@@ -10,6 +10,26 @@ class OrderService {
   static final _supabase = Supabase.instance.client;
   static const String _shopId = AuthService.DEFAULT_SHOP_ID;
 
+  static double _resolveEffectivePrice(Map<String, dynamic> item) {
+    final double basePrice = (item['price'] as num).toDouble();
+    final num? discountPriceRaw = item['discount_price'] as num?;
+    final int discountPercent =
+        (item['discount_percent'] as num?)?.toInt() ?? 0;
+
+    if (discountPriceRaw != null) {
+      final double discountPrice = discountPriceRaw.toDouble();
+      if (discountPrice > 0 && discountPrice < basePrice) {
+        return discountPrice;
+      }
+    }
+
+    if (discountPercent > 0 && discountPercent < 100) {
+      return basePrice * (1 - (discountPercent / 100));
+    }
+
+    return basePrice;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // مناطق التوصيل (Delivery Zones)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -70,13 +90,18 @@ class OrderService {
         if (item == null) continue;
 
         final quantity = cartItem['quantity'] as int;
-        final unitPrice = (item['price'] as num).toDouble();
+        final double originalUnitPrice = (item['price'] as num).toDouble();
+        final int discountPercent =
+            (item['discount_percent'] as num?)?.toInt() ?? 0;
+        final unitPrice = _resolveEffectivePrice(item);
         final lineTotal = unitPrice * quantity;
         subtotal += lineTotal;
 
         orderItemsData.add({
           'item_id': cartItem['item_id'],
           'quantity': quantity,
+          'original_unit_price': originalUnitPrice,
+          'discount_percent_snapshot': discountPercent,
           'unit_price': unitPrice,
           'line_total': lineTotal,
           'title_snapshot': item['title'] ?? '',

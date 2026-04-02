@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utls/constants.dart';
 import '../widget/bubble_button.dart';
 import '../models/product_model.dart';
 import 'favorites_screen.dart';
-import '../main.dart';
+import '../services/auth_service.dart';
+import '../services/local_cart_service.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Item item;
@@ -23,11 +23,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _isCheckingFavorite = true;
   int _quantity = 1;
   bool _isAddingToCart = false;
-
-  // Supabase
-  static final _supabase = Supabase.instance.client;
-  static int? _currentCustomerId = 1; // مؤقت للاختبار
-  static int? _currentCartId;
 
   @override
   void initState() {
@@ -50,70 +45,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     });
   }
 
-  Future<int?> _getOrCreateCart() async {
-    if (_currentCustomerId == null) return null;
-    if (_currentCartId != null) return _currentCartId;
-
-    try {
-      final existingCart = await _supabase
-          .from('carts')
-          .select('id')
-          .eq('shop_id', SupabaseConfig.shopId)
-          .eq('customer_id', _currentCustomerId!)
-          .maybeSingle();
-
-      if (existingCart != null) {
-        _currentCartId = existingCart['id'];
-        return _currentCartId;
-      }
-
-      final newCart = await _supabase
-          .from('carts')
-          .insert({
-            'shop_id': SupabaseConfig.shopId,
-            'customer_id': _currentCustomerId,
-          })
-          .select('id')
-          .single();
-
-      _currentCartId = newCart['id'];
-      return _currentCartId;
-    } catch (e) {
-      print('❌ خطأ في الحصول على السلة: $e');
-      return null;
-    }
-  }
-
   Future<void> _addToCart() async {
     if (_isAddingToCart) return;
 
     setState(() => _isAddingToCart = true);
 
     try {
-      final cartId = await _getOrCreateCart();
-      if (cartId == null) {
-        throw Exception('لا يمكن الحصول على السلة');
+      final bool success;
+      if (AuthService.isLoggedIn) {
+        success = await AuthService.addToCart(widget.item.id, _quantity);
+      } else {
+        success = await LocalCartService.addToCart(widget.item.id, _quantity);
       }
 
-      final existingItem = await _supabase
-          .from('cart_items')
-          .select('id, quantity')
-          .eq('cart_id', cartId)
-          .eq('item_id', widget.item.id)
-          .maybeSingle();
-
-      if (existingItem != null) {
-        final newQuantity = existingItem['quantity'] + _quantity;
-        await _supabase.from('cart_items').update({
-          'quantity': newQuantity,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', existingItem['id']);
-      } else {
-        await _supabase.from('cart_items').insert({
-          'cart_id': cartId,
-          'item_id': widget.item.id,
-          'quantity': _quantity,
-        });
+      if (!success) {
+        throw Exception('فشل إضافة المنتج للسلة');
       }
 
       if (mounted) {
