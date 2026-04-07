@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utls/constants.dart';
 import '../../widget/bubble_button.dart';
 import '../../widget/custom_search_bar.dart';
+import '../../widget/Mytext.dart';
 import '../product_detail_screen.dart';
 import '../../models/product_model.dart';
 import '../../main.dart'; // استيراد SupabaseConfig من main.dart
@@ -150,11 +151,27 @@ class _ProductScreenState extends State<ProductScreen> {
 
       // تحويل البيانات إلى قائمة Category
       final categories = (categoriesData as List).map((cat) {
+        // تحويل مسار الصورة إلى URL كامل
+        String? iconUrl;
+        if (cat['icon'] != null && (cat['icon'] as String).isNotEmpty) {
+          final iconPath = cat['icon'] as String;
+          // إذا كان المسار URL كامل، استخدمه كما هو
+          if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {
+            iconUrl = iconPath;
+          } else if (iconPath.startsWith('assets/')) {
+            // إذا كان مسار محلي (assets)، اتركه فارغ لعرض الأيقونة الافتراضية
+            iconUrl = null;
+          } else {
+            // تحويل المسار إلى URL كامل من Supabase Storage
+            iconUrl = _supabase.storage.from('icon').getPublicUrl(iconPath);
+          }
+        }
+        
         return Category(
           id: cat['id'], // ✅ اسم العمود الصحيح
           shopId: cat['shop_id'],
           name: cat['name'], // ✅ اسم العمود الصحيح
-          icon: cat['icon'], // ✅ اسم العمود الصحيح
+          icon: iconUrl, // ✅ URL كامل للصورة
           createdAt: cat['created_at'] != null
               ? DateTime.parse(cat['created_at'])
               : DateTime.now(),
@@ -246,10 +263,24 @@ class _ProductScreenState extends State<ProductScreen> {
         _filteredItems = items;
         _isLoading = false;
       });
+      
+      // تحميل صور التصنيفات مسبقاً (precache)
+      _precacheCategoryImages(categories);
     } catch (e) {
       print('خطأ في تحميل البيانات: $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
+    }
+  }
+
+  // تحميل صور التصنيفات مسبقاً لتجنب التأخير
+  void _precacheCategoryImages(List<Category> categories) {
+    for (final category in categories) {
+      if (category.icon != null && 
+          category.icon!.isNotEmpty &&
+          (category.icon!.startsWith('http://') || category.icon!.startsWith('https://'))) {
+        precacheImage(NetworkImage(category.icon!), context);
+      }
     }
   }
 
@@ -364,6 +395,52 @@ class _ProductScreenState extends State<ProductScreen> {
     _applyFilters();
   }
 
+  // بناء صورة التصنيف (من الشبكة أو الأصول المحلية)
+  Widget _buildCategoryImage(String? iconUrl) {
+    // الأيقونة الافتراضية
+    Widget defaultIcon = Container(
+      color: AppColors.primaryColor.withOpacity(0.3),
+      child: const Center(
+        child: Icon(
+          Icons.shopping_bag_outlined,
+          color: Colors.white,
+          size: 35,
+        ),
+      ),
+    );
+
+    // إذا لم يكن هناك صورة، نعرض أيقونة منتجات
+    if (iconUrl == null || iconUrl.isEmpty) {
+      return defaultIcon;
+    }
+
+    // إذا كانت الصورة من الشبكة (URL)
+    if (iconUrl.startsWith('http://') || iconUrl.startsWith('https://')) {
+      return FadeInImage(
+        placeholder: const AssetImage('assets/img/main.png'),
+        image: NetworkImage(iconUrl),
+        fit: BoxFit.cover,
+        fadeInDuration: const Duration(milliseconds: 200),
+        fadeOutDuration: const Duration(milliseconds: 100),
+        imageErrorBuilder: (context, error, stackTrace) {
+          return defaultIcon;
+        },
+        placeholderErrorBuilder: (context, error, stackTrace) {
+          return defaultIcon;
+        },
+      );
+    }
+
+    // إذا كانت الصورة من الأصول المحلية
+    return Image.asset(
+      iconUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return defaultIcon;
+      },
+    );
+  }
+
   // عرض قائمة إعدادات البحث
   void showSearchSettingsMenu() {
     final RenderBox button = context.findRenderObject() as RenderBox;
@@ -474,34 +551,8 @@ class _ProductScreenState extends State<ProductScreen> {
                     bottom: false,
                     child: Padding(
                       padding: const EdgeInsets.only(top: 5),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          // زر الرجوع على اليسار
-                          BubbleButton(
-                            icon: Icons.arrow_back,
-                            onTap: () {
-                              // وظيفة زر الرجوع
-                            },
-                          ),
-                          // النص في الوسط
-                          Text(
-                            "المنتجات",
-                            style: GoogleFonts.cairo(
-                              color: AppColors.primaryColor,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          // مساحة فارغة للتوازن
-                          BubbleButton(
-                            icon: Icons.person,
-                            onTap: () {
-                              // وظيفة زر الرجوع
-                            },
-                          ),
-                        ],
+                      child: Center(
+                        child: const MyText(text: "المنتجات", fontSize: 22),
                       ),
                     ),
                   ),
@@ -513,43 +564,36 @@ class _ProductScreenState extends State<ProductScreen> {
                         icon: Icons.tune_rounded,
                         onTap: showSearchSettingsMenu,
                       ),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: CustomSearchBar(
                           controller: _searchController,
                           hintText: 'ابحث عن منتج...',
                         ),
                       ),
-                      // زر مسح البحث
-                      if (_searchQuery.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 5),
-                          child: BubbleButton(
-                            icon: Icons.close,
-                            onTap: () {
-                              _searchController.clear();
-                            },
-                          ),
-                        ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   // شريط التصنيفات الأفقي
                   AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    height: _showCategories ? 100 : 0,
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.easeOut,
+                    height: _showCategories ? 110 : 0,
                     child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
+                      duration: const Duration(milliseconds: 100),
                       opacity: _showCategories ? 1.0 : 0.0,
                       child: SizedBox(
-                        height: 100,
+                        height: 110,
                         child: Directionality(
                           textDirection: TextDirection.rtl,
                           child: ListView.builder(
                             scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
+                            clipBehavior: Clip.none,
+                            padding: const EdgeInsets.only(
+                              left: 4,
+                              right: 4,
+                              top: 8,
+                              bottom: 8,
                             ),
                             itemCount: _categories.length + 1, // +1 لزر "الكل"
                             itemBuilder: (context, index) {
@@ -566,33 +610,71 @@ class _ProductScreenState extends State<ProductScreen> {
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Container(
-                                          width: 72,
-                                          height: 72,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: isSelected
-                                                ? AppColors.primaryColor
-                                                : AppColors.primaryColor
-                                                    .withOpacity(0.6),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: AppColors.primaryColor
-                                                    .withOpacity(0.3),
-                                                blurRadius: 6,
-                                                offset: const Offset(0, 1),
+                                        Stack(
+                                          children: [
+                                            AnimatedContainer(
+                                              duration: const Duration(milliseconds: 150),
+                                              width: 72,
+                                              height: 72,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: isSelected
+                                                    ? AppColors.primaryColor
+                                                    : AppColors.primaryColor
+                                                        .withOpacity(0.6),
+                                                border: isSelected
+                                                    ? Border.all(
+                                                        color: Colors.white,
+                                                        width: 3,
+                                                      )
+                                                    : null,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: isSelected
+                                                        ? AppColors.primaryColor
+                                                        : AppColors.primaryColor
+                                                            .withOpacity(0.3),
+                                                    blurRadius: isSelected ? 12 : 6,
+                                                    offset: const Offset(0, 1),
+                                                  ),
+                                                ],
                                               ),
-                                            ],
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: Text(
-                                            'الكل',
-                                            style: GoogleFonts.cairo(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700,
+                                              alignment: Alignment.center,
+                                              child: Text(
+                                                'الكل',
+                                                style: GoogleFonts.cairo(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
                                             ),
-                                          ),
+                                            // علامة الاختيار
+                                            if (isSelected)
+                                              Positioned(
+                                                top: 0,
+                                                right: 0,
+                                                child: Container(
+                                                  width: 22,
+                                                  height: 22,
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    color: Colors.white,
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black.withOpacity(0.2),
+                                                        blurRadius: 4,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.check,
+                                                    color: AppColors.primaryColor,
+                                                    size: 14,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ],
                                     ),
@@ -609,99 +691,119 @@ class _ProductScreenState extends State<ProductScreen> {
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Container(
-                                        width: 72,
-                                        height: 72,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: AppColors.primaryColor,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: AppColors.primaryColor
-                                                  .withOpacity(0.3),
-                                              blurRadius: 6,
-                                              offset: const Offset(0, 1),
-                                            ),
-                                          ],
-                                        ),
-                                        child: ClipOval(
-                                          child: Stack(
-                                            children: [
-                                              Positioned.fill(
-                                                child: Padding(
-                                                  padding: const EdgeInsets.all(
-                                                    1.5,
-                                                  ),
-                                                  child: ClipOval(
-                                                    child: Image.asset(
-                                                      category.icon ??
-                                                          'assets/img/main.png',
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (
-                                                        context,
-                                                        error,
-                                                        stackTrace,
-                                                      ) {
-                                                        return Icon(
-                                                          Icons.image,
-                                                          color: Colors.white
-                                                              .withOpacity(
-                                                            0.5,
-                                                          ),
-                                                          size: 30,
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              Positioned(
-                                                bottom: 0,
-                                                left: 0,
-                                                right: 0,
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                    bottom: 6,
-                                                    top: 4,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    gradient: LinearGradient(
-                                                      begin: Alignment
-                                                          .bottomCenter,
-                                                      end: Alignment.topCenter,
-                                                      stops: const [
-                                                        0.0,
-                                                        0.5,
-                                                        1.0,
-                                                      ],
-                                                      colors: [
-                                                        AppColors.primaryColor
-                                                            .withOpacity(
-                                                          0.95,
-                                                        ),
-                                                        AppColors.primaryColor
-                                                            .withOpacity(0.7),
-                                                        AppColors.primaryColor
-                                                            .withOpacity(0.0),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    category.name,
-                                                    textAlign: TextAlign.center,
-                                                    style: GoogleFonts.cairo(
+                                      Stack(
+                                        children: [
+                                          AnimatedContainer(
+                                            duration: const Duration(milliseconds: 150),
+                                            width: 72,
+                                            height: 72,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: AppColors.primaryColor,
+                                              border: isSelected
+                                                  ? Border.all(
                                                       color: Colors.white,
-                                                      fontSize: 9,
-                                                      fontWeight:
-                                                          FontWeight.w700,
+                                                      width: 3,
+                                                    )
+                                                  : null,
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: isSelected
+                                                      ? AppColors.primaryColor
+                                                      : AppColors.primaryColor
+                                                          .withOpacity(0.3),
+                                                  blurRadius: isSelected ? 12 : 6,
+                                                  offset: const Offset(0, 1),
+                                                ),
+                                              ],
+                                            ),
+                                            child: ClipOval(
+                                              child: Stack(
+                                                children: [
+                                                  Positioned.fill(
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.all(
+                                                        1.5,
+                                                      ),
+                                                      child: ClipOval(
+                                                        child: _buildCategoryImage(category.icon),
+                                                      ),
                                                     ),
                                                   ),
+                                                  Positioned(
+                                                    bottom: 0,
+                                                    left: 0,
+                                                    right: 0,
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                        bottom: 6,
+                                                        top: 4,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        gradient: LinearGradient(
+                                                          begin: Alignment
+                                                              .bottomCenter,
+                                                          end: Alignment.topCenter,
+                                                          stops: const [
+                                                            0.0,
+                                                            0.5,
+                                                            1.0,
+                                                          ],
+                                                          colors: [
+                                                            AppColors.primaryColor
+                                                                .withOpacity(
+                                                              0.95,
+                                                            ),
+                                                            AppColors.primaryColor
+                                                                .withOpacity(0.7),
+                                                            AppColors.primaryColor
+                                                                .withOpacity(0.0),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        category.name,
+                                                        textAlign: TextAlign.center,
+                                                        style: GoogleFonts.cairo(
+                                                          color: Colors.white,
+                                                          fontSize: 9,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          // علامة الاختيار
+                                          if (isSelected)
+                                            Positioned(
+                                              top: 0,
+                                              right: 0,
+                                              child: Container(
+                                                width: 22,
+                                                height: 22,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: Colors.white,
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.black.withOpacity(0.2),
+                                                      blurRadius: 4,
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: Icon(
+                                                  Icons.check,
+                                                  color: AppColors.primaryColor,
+                                                  size: 14,
                                                 ),
                                               ),
-                                            ],
-                                          ),
-                                        ),
+                                            ),
+                                        ],
                                       ),
                                     ],
                                   ),

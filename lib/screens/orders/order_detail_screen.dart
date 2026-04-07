@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../utls/constants.dart';
 import '../../services/order_service.dart';
@@ -116,38 +116,41 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppColors.primaryColor),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'طلب #${widget.orderId}',
-          style: GoogleFonts.cairo(
-            color: AppColors.primaryColor,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          IconButton(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leading: IconButton(
             icon: Icon(Icons.refresh, color: AppColors.primaryColor),
             onPressed: _loadOrderDetails,
           ),
-        ],
+          title: Text(
+            'طلب #${widget.orderId}',
+            style: GoogleFonts.cairo(
+              color: AppColors.primaryColor,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.arrow_forward, color: AppColors.primaryColor),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primaryColor),
+              )
+            : _orderData == null
+                ? _buildErrorState()
+                : _buildContent(),
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryColor),
-            )
-          : _orderData == null
-              ? _buildErrorState()
-              : _buildContent(),
     );
   }
 

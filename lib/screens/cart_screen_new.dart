@@ -1,13 +1,10 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utls/constants.dart';
 import '../services/auth_service.dart';
 import '../services/local_cart_service.dart';
-import '../services/cart_update_service.dart';
 import '../widget/bubble_button.dart';
-import '../widget/Mytext.dart';
 import 'auth_screen.dart';
 import 'checkout_screen.dart';
 
@@ -19,35 +16,21 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  List<Map<String, dynamic>> _cartItems = [];
-  bool _isLoading = true;
-  double _totalPrice = 0;
-  bool _isLoggedIn = false;
-  StreamSubscription<bool>? _cartSubscription;
+  Key _refreshKey = UniqueKey();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCartItems();
-    
-    // الاستماع للتغييرات من CartUpdateService
-    _cartSubscription = CartUpdateService.cartChangeStream.listen((_) {
-      print('🔔 تم استقبال إشعار بتغيير في السلة');
-      _loadCartItems();
+  // إعادة تحميل السلة
+  void _refresh() {
+    setState(() {
+      _refreshKey = UniqueKey();
     });
   }
 
-  @override
-  void dispose() {
-    _cartSubscription?.cancel();
-    super.dispose();
-  }
+  bool get _isLoggedIn => AuthService.isLoggedIn;
 
-  // تحميل عناصر السلة
-  Future<void> _loadCartItems() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-
+  // تحميل السلة
+  Future<Map<String, dynamic>> _loadCart() async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    
     final isLoggedIn = AuthService.isLoggedIn;
     List<Map<String, dynamic>> items;
 
@@ -72,16 +55,9 @@ class _CartScreenState extends State<CartScreen> {
       }
     }
 
-    if (!mounted) return;
-    setState(() {
-      _cartItems = items;
-      _totalPrice = total;
-      _isLoggedIn = isLoggedIn;
-      _isLoading = false;
-    });
+    return {'items': items, 'total': total, 'isLoggedIn': isLoggedIn};
   }
 
-  // تحميل السلة
   double _resolveEffectivePrice(Map<String, dynamic> item) {
     final double basePrice = (item['price'] as num).toDouble();
     final num? discountPriceRaw = item['discount_price'] as num?;
@@ -102,35 +78,31 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   // حذف منتج
-  Future<void> _deleteItem(int itemId) async {
+  Future<void> _deleteItem(int itemId, bool isLoggedIn) async {
     bool success;
-    if (_isLoggedIn) {
+    if (isLoggedIn) {
       success = await AuthService.deleteFromCart(itemId);
     } else {
       success = await LocalCartService.removeFromCart(itemId);
     }
 
-    if (success) {
-      CartUpdateService.notifyCartChanged();
-    }
+    if (success) _refresh();
   }
 
   // تحديث الكمية
-  Future<void> _updateQuantity(int itemId, int newQuantity) async {
+  Future<void> _updateQuantity(int itemId, int newQuantity, bool isLoggedIn) async {
     bool success;
-    if (_isLoggedIn) {
+    if (isLoggedIn) {
       success = await AuthService.updateCartItemQuantity(itemId, newQuantity);
     } else {
       success = await LocalCartService.updateQuantity(itemId, newQuantity);
     }
 
-    if (success) {
-      CartUpdateService.notifyCartChanged();
-    }
+    if (success) _refresh();
   }
 
   // تفريغ السلة
-  Future<void> _clearCart() async {
+  Future<void> _clearCart(bool isLoggedIn) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -147,14 +119,14 @@ class _CartScreenState extends State<CartScreen> {
 
     if (confirm == true) {
       bool success;
-      if (_isLoggedIn) {
+      if (isLoggedIn) {
         success = await AuthService.clearCart();
       } else {
         success = await LocalCartService.clearCart();
       }
 
       if (success) {
-        CartUpdateService.notifyCartChanged();
+        _refresh();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('تم تفريغ السلة بنجاح', style: GoogleFonts.cairo(), textAlign: TextAlign.center), backgroundColor: Colors.green, duration: const Duration(seconds: 2)),
@@ -166,77 +138,95 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Stack(
-          children: [
-            Positioned.fill(child: Image.asset('assets/img/main.png', fit: BoxFit.cover)),
-            const Center(child: CircularProgressIndicator(color: AppColors.primaryColor)),
-          ],
-        ),
-      );
-    }
+    return FutureBuilder<Map<String, dynamic>>(
+      key: _refreshKey,
+      future: _loadCart(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Stack(
+              children: [
+                Positioned.fill(child: Image.asset('assets/img/main.png', fit: BoxFit.cover)),
+                const Center(child: CircularProgressIndicator(color: AppColors.primaryColor)),
+              ],
+            ),
+          );
+        }
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        children: [
-          Positioned.fill(child: Image.asset('assets/img/main.png', fit: BoxFit.cover)),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 0),
-              child: Column(
-                children: [
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.only(top: 5),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const SizedBox(width: 40),
-                        const MyText(text: 'السلة', fontSize: 20),
-                        if (_cartItems.isNotEmpty)
-                          BubbleButton(icon: Icons.delete_outline, onTap: _clearCart, iconColor: Colors.red)
-                        else
-                          const SizedBox(width: 40),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Content
-                  Expanded(
-                    child: _cartItems.isEmpty
-                        ? _buildEmptyCart()
-                        : Column(
-                            children: [
-                              if (!_isLoggedIn) _buildLoginPrompt(),
-                              Expanded(
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.only(bottom: 100),
-                                  itemCount: _cartItems.length,
-                                  itemBuilder: (context, index) {
-                                    return _buildCartItem(_cartItems[index]);
-                                  },
-                                ),
+        if (snapshot.hasError) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Center(child: Text('حدث خطأ', style: GoogleFonts.cairo())),
+          );
+        }
+
+        final data = snapshot.data!;
+        final cartItems = data['items'] as List<Map<String, dynamic>>;
+        final totalPrice = data['total'] as double;
+        final isLoggedIn = data['isLoggedIn'] as bool;
+
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Stack(
+            children: [
+              Positioned.fill(child: Image.asset('assets/img/main.png', fit: BoxFit.cover)),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0, bottom: 0),
+                  child: Column(
+                    children: [
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const SizedBox(width: 40),
+                            Text('السلة', style: GoogleFonts.cairo(color: AppColors.primaryColor, fontSize: 20, fontWeight: FontWeight.w700)),
+                            if (cartItems.isNotEmpty)
+                              BubbleButton(icon: Icons.delete_outline, onTap: () => _clearCart(isLoggedIn), iconColor: Colors.red)
+                            else
+                              const SizedBox(width: 40),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Content
+                      Expanded(
+                        child: cartItems.isEmpty
+                            ? _buildEmptyCart()
+                            : Column(
+                                children: [
+                                  if (!isLoggedIn) _buildLoginPrompt(),
+                                  Expanded(
+                                    child: ListView.builder(
+                                      padding: const EdgeInsets.only(bottom: 100),
+                                      itemCount: cartItems.length,
+                                      itemBuilder: (context, index) {
+                                        return _buildCartItem(cartItems[index], isLoggedIn);
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+              // Bottom Bar
+              if (cartItems.isNotEmpty)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: _buildBottomBar(totalPrice, cartItems, isLoggedIn),
+                ),
+            ],
           ),
-          // Bottom Bar
-          if (_cartItems.isNotEmpty)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildBottomBar(),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -275,7 +265,7 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildCartItem(Map<String, dynamic> cartItem) {
+  Widget _buildCartItem(Map<String, dynamic> cartItem, bool isLoggedIn) {
     final int itemId;
     final String title;
     final String? imagePath;
@@ -284,7 +274,7 @@ class _CartScreenState extends State<CartScreen> {
     int discountPercent = 0;
     final int quantity = cartItem['quantity'] as int;
 
-    if (_isLoggedIn) {
+    if (isLoggedIn) {
       itemId = cartItem['item_id'] as int;
       final item = cartItem['items'];
       title = item['title'] ?? 'منتج غير معروف';
@@ -362,16 +352,16 @@ class _CartScreenState extends State<CartScreen> {
                             GestureDetector(
                               onTap: () async {
                                 if (quantity <= 1) {
-                                  await _deleteItem(itemId);
+                                  await _deleteItem(itemId, isLoggedIn);
                                 } else {
-                                  await _updateQuantity(itemId, quantity - 1);
+                                  await _updateQuantity(itemId, quantity - 1, isLoggedIn);
                                 }
                               },
                               child: Container(padding: const EdgeInsets.all(4), child: const Icon(Icons.remove, size: 18, color: AppColors.primaryColor)),
                             ),
                             Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Text('$quantity', style: GoogleFonts.cairo(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87))),
                             GestureDetector(
-                              onTap: () => _updateQuantity(itemId, quantity + 1),
+                              onTap: () => _updateQuantity(itemId, quantity + 1, isLoggedIn),
                               child: Container(padding: const EdgeInsets.all(4), child: const Icon(Icons.add, size: 18, color: AppColors.primaryColor)),
                             ),
                           ],
@@ -385,7 +375,7 @@ class _CartScreenState extends State<CartScreen> {
               ),
             ),
             GestureDetector(
-              onTap: () => _deleteItem(itemId),
+              onTap: () => _deleteItem(itemId, isLoggedIn),
               child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.red[50], shape: BoxShape.circle), child: const Icon(Icons.delete_outline, size: 20, color: Colors.red)),
             ),
           ],
@@ -394,7 +384,7 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildBottomBar() {
+  Widget _buildBottomBar(double totalPrice, List<Map<String, dynamic>> cartItems, bool isLoggedIn) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -411,7 +401,7 @@ class _CartScreenState extends State<CartScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('الإجمالي:', style: GoogleFonts.cairo(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  Text('${_totalPrice.toStringAsFixed(0)} IQD', style: GoogleFonts.cairo(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primaryColor)),
+                  Text('${totalPrice.toStringAsFixed(0)} IQD', style: GoogleFonts.cairo(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primaryColor)),
                 ],
               ),
               const SizedBox(height: 15),
@@ -420,20 +410,20 @@ class _CartScreenState extends State<CartScreen> {
                 height: 54,
                 child: ElevatedButton(
                   onPressed: () async {
-                    if (!_isLoggedIn) {
+                    if (!isLoggedIn) {
                       final result = await Navigator.push<bool>(context, MaterialPageRoute(builder: (context) => const AuthScreen()));
                       if (result == true && mounted) {
-                        CartUpdateService.notifyCartChanged();
+                        _refresh();
                       }
                     } else {
-                      final result = await Navigator.push<bool>(context, MaterialPageRoute(builder: (context) => CheckoutScreen(cartItems: _cartItems, subtotal: _totalPrice)));
+                      final result = await Navigator.push<bool>(context, MaterialPageRoute(builder: (context) => CheckoutScreen(cartItems: cartItems, subtotal: totalPrice)));
                       if (result == true && mounted) {
-                        CartUpdateService.notifyCartChanged();
+                        _refresh();
                       }
                     }
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 8),
-                  child: Text(_isLoggedIn ? 'إتمام الشراء' : 'سجل دخولك للشراء', style: GoogleFonts.cairo(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
+                  child: Text(isLoggedIn ? 'إتمام الشراء' : 'سجل دخولك للشراء', style: GoogleFonts.cairo(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
               ),
             ],

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
 import '../services/local_cart_service.dart';
+import '../services/cart_update_service.dart';
 import '../utls/constants.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -123,8 +124,22 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       setState(() => _isLoading = false);
 
       if (result['success'] == true) {
+        // إعادة تسجيل الدخول بعد التحقق من OTP بنجاح
+        final loginSuccess = await AuthService.completeLoginAfterOtpVerification(
+          phone: widget.phone,
+        );
+
+        if (!loginSuccess) {
+          setState(() => _isLoading = false);
+          _showError('فشل في إكمال تسجيل الدخول. حاول مرة أخرى');
+          return;
+        }
+
         // نقل السلة المحلية إلى قاعدة البيانات
         await LocalCartService.syncCartToDatabase(widget.authUserId);
+        
+        // إطلاق إشعار لتحديث السلة
+        CartUpdateService.notifyCartChanged();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

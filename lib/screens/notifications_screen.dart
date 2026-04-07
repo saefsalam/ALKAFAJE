@@ -54,6 +54,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       child: Scaffold(
         backgroundColor: Colors.grey[50],
         appBar: AppBar(
+          automaticallyImplyLeading: false,
           title: Text(
             'الاشعارات',
             style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
@@ -61,25 +62,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           backgroundColor: Colors.white,
           foregroundColor: AppColors.primaryColor,
           elevation: 0,
-          actions: [
-            ValueListenableBuilder<int>(
-              valueListenable: _notificationService.unreadCount,
-              builder: (context, unreadCount, _) {
-                if (unreadCount == 0) {
-                  return const SizedBox.shrink();
-                }
+          leading: ValueListenableBuilder<int>(
+            valueListenable: _notificationService.unreadCount,
+            builder: (context, unreadCount, _) {
+              if (unreadCount == 0) {
+                return const SizedBox.shrink();
+              }
 
-                return TextButton(
-                  onPressed: _notificationService.markAllAsRead,
-                  child: Text(
-                    'قراءة الكل',
-                    style: GoogleFonts.cairo(
-                      color: AppColors.primaryColor,
-                      fontWeight: FontWeight.w700,
-                    ),
+              return TextButton(
+                onPressed: _notificationService.markAllAsRead,
+                child: Text(
+                  'قراءة الكل',
+                  style: GoogleFonts.cairo(
+                    color: AppColors.primaryColor,
+                    fontWeight: FontWeight.w700,
                   ),
-                );
-              },
+                ),
+              );
+            },
+          ),
+          leadingWidth: 100,
+          actions: [
+            // زر الرجوع على اليسار
+            IconButton(
+              icon: const Icon(Icons.arrow_forward),
+              onPressed: () => Navigator.pop(context),
             ),
           ],
         ),

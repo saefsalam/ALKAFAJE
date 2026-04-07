@@ -6,6 +6,7 @@ import 'dart:async';
 import '../utls/constants.dart';
 import '../models/product_model.dart';
 import '../widget/bubble_button.dart';
+import '../widget/Mytext.dart';
 import 'product_detail_screen.dart';
 import '../main.dart';
 import '../services/auth_service.dart';
@@ -354,14 +355,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   BubbleButton(icon: Icons.favorite_border, onTap: () {}),
-                  Text(
-                    'المفضلة',
-                    style: GoogleFonts.cairo(
-                      color: AppColors.primaryColor,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  const MyText(text: 'المفضلة', fontSize: 20),
                   BubbleButton(
                     icon: Icons.delete_outline,
                     onTap: _favorites.isEmpty ? () {} : _clearAllFavorites,

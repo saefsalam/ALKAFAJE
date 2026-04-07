@@ -1,5 +1,7 @@
 import 'dart:math';
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'cart_update_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // خدمة المصادقة - تسجيل الدخول والتسجيل
@@ -398,6 +400,31 @@ class AuthService {
     }
   }
 
+  /// إعادة تسجيل الدخول بعد التحقق من OTP بنجاح
+  static Future<bool> completeLoginAfterOtpVerification({
+    required String phone,
+  }) async {
+    try {
+      final email =
+          '${phone.replaceAll('+', '').replaceAll(' ', '')}@phone.local';
+      final password = phone.replaceAll('+', '').replaceAll(' ', '');
+
+      final response = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+
+      if (response.user != null) {
+        print('✅ تم إعادة تسجيل الدخول بنجاح بعد التحقق من OTP');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ خطأ في إعادة تسجيل الدخول بعد OTP: $e');
+      return false;
+    }
+  }
+
   /// توليد رمز OTP عشوائي (5 أرقام)
   static String _generateOtp() {
     final random = Random();
@@ -444,21 +471,31 @@ class AuthService {
         return {'success': false, 'message': 'فشل في إنشاء الحساب'};
       }
 
+      // حفظ معلومات المستخدم مؤقتاً ثم تسجيل الخروج
+      // لأننا لا نريد أن يكون مسجل دخول قبل التحقق من OTP
+      final authUserId = response.user!.id;
+      
       // إنشاء سجل العميل
       final customerId = await _createCustomerRecord(
-        authUserId: response.user!.id,
+        authUserId: authUserId,
         name: fullName,
         phone: phone,
       );
 
       if (customerId == null) {
+        // تسجيل الخروج لأن إنشاء سجل العميل فشل
+        await _supabase.auth.signOut();
         return {'success': false, 'message': 'فشل في إنشاء سجل العميل'};
       }
+
+      // تسجيل الخروج - المستخدم سيُعاد تسجيل دخوله بعد التحقق من OTP
+      await _supabase.auth.signOut();
+      print('🔐 تم تسجيل الخروج مؤقتاً بانتظار التحقق من OTP');
 
       return {
         'success': true,
         'message': 'تم إنشاء الحساب بنجاح',
-        'authUserId': response.user!.id,
+        'authUserId': authUserId,
         'customerId': customerId,
       };
     } on AuthApiException catch (e) {
@@ -514,6 +551,14 @@ class AuthService {
         return {'success': false, 'message': 'فشل في تسجيل الدخول'};
       }
 
+      // حفظ معرف المستخدم ثم تسجيل الخروج مؤقتاً
+      // لأننا لا نريد أن يكون مسجل دخول قبل التحقق من OTP
+      final authUserId = response.user!.id;
+      
+      // تسجيل الخروج مؤقتاً
+      await _supabase.auth.signOut();
+      print('🔐 تم تسجيل الخروج مؤقتاً بانتظار التحقق من OTP');
+
       // إنشاء OTP جديد للتحقق
       final otp = _generateOtp();
       await _supabase.from('whatsapp_otps').insert({
@@ -531,7 +576,7 @@ class AuthService {
       return {
         'success': true,
         'message': 'تم إرسال رمز التحقق',
-        'authUserId': response.user!.id,
+        'authUserId': authUserId,
         'customerId': customer['id'],
         'customerName': customer['name'] ?? '',
       };
@@ -661,6 +706,9 @@ class AuthService {
         });
       }
 
+      // إشعار بتغيير السلة
+      CartUpdateService.notifyCartChanged();
+
       return true;
     } catch (e) {
       print('❌ خطأ في إضافة المنتج للسلة: $e');
@@ -679,6 +727,9 @@ class AuthService {
           .delete()
           .eq('cart_id', cartId)
           .eq('item_id', itemId);
+
+      // إشعار بتغيير السلة
+      CartUpdateService.notifyCartChanged();
 
       return true;
     } catch (e) {
@@ -700,6 +751,9 @@ class AuthService {
           .eq('cart_id', cartId)
           .eq('item_id', itemId);
 
+      // إشعار بتغيير السلة
+      CartUpdateService.notifyCartChanged();
+
       return true;
     } catch (e) {
       print('❌ خطأ في تحديث الكمية: $e');
@@ -715,9 +769,38 @@ class AuthService {
 
       await _supabase.from('cart_items').delete().eq('cart_id', cartId);
 
+      // إشعار بتغيير السلة
+      CartUpdateService.notifyCartChanged();
+
       return true;
     } catch (e) {
       print('❌ خطأ في تفريغ السلة: $e');
+      return false;
+    }
+  }
+
+  /// تحديث اسم العميل
+  static Future<bool> updateCustomerName(String newName) async {
+    if (!isLoggedIn) return false;
+
+    try {
+      // تحديث في جدول customers
+      await _supabase
+          .from('customers')
+          .update({'name': newName})
+          .eq('auth_user_id', authUserId!);
+
+      // تحديث في auth metadata
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {'full_name': newName},
+        ),
+      );
+
+      print('✅ تم تحديث اسم العميل بنجاح');
+      return true;
+    } catch (e) {
+      print('❌ خطأ في تحديث اسم العميل: $e');
       return false;
     }
   }

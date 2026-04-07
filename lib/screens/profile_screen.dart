@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
+import '../services/cart_update_service.dart';
 import '../utls/constants.dart';
-import '../widget/bubble_button.dart';
+import '../widget/Mytext.dart';
 import 'addresses/select_location_bottom_sheet.dart';
 import 'auth_screen.dart';
 import 'notifications_screen.dart';
@@ -80,6 +81,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirmed == true) {
       final success = await AuthService.signOut();
       if (success && mounted) {
+        // إشعار بتغيير السلة (التبديل من السلة في قاعدة البيانات إلى السلة المحلية)
+        CartUpdateService.notifyCartChanged();
+        
         setState(() {
           _customerInfo = null;
         });
@@ -123,66 +127,374 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Padding(
-        padding: const EdgeInsets.only(left: 15.0, right: 15.0, top: 5.0),
-        child: Column(
+  // عرض دايلوج تعديل الملف الشخصي
+  Future<void> _showEditProfileDialog() async {
+    final phone = _customerInfo?['phone'] ?? '';
+    final customerId = _customerInfo?['id'];
+    
+    if (phone.isEmpty || customerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'لا يمكن التحقق من الهوية',
+            style: GoogleFonts.cairo(),
+            textAlign: TextAlign.center,
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // المرحلة 1: إرسال OTP
+    final otpSent = await _sendOtpForVerification(phone, customerId);
+    if (!otpSent) return;
+
+    // المرحلة 2: التحقق من OTP
+    final verified = await _showOtpVerificationDialog(phone, customerId);
+    
+    // إذا تم التحقق بنجاح، افتح دايلوج التعديل
+    if (verified == true && mounted) {
+      _showNameEditDialog();
+    }
+  }
+
+  // إرسال OTP للتحقق
+  Future<bool> _sendOtpForVerification(String phone, int customerId) async {
+    try {
+      // إرسال OTP جديد
+      final result = await AuthService.resendOtp(
+        phone: phone,
+        customerId: customerId,
+      );
+
+      if (result['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تم إرسال رمز التحقق إلى WhatsApp',
+                style: GoogleFonts.cairo(),
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return true;
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                result['message'] ?? 'فشل إرسال الرمز',
+                style: GoogleFonts.cairo(),
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return false;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'حدث خطأ أثناء إرسال الرمز',
+              style: GoogleFonts.cairo(),
+              textAlign: TextAlign.center,
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  // عرض دايلوج التحقق من OTP
+  Future<bool?> _showOtpVerificationDialog(String phone, int customerId) async {
+    final TextEditingController otpController = TextEditingController();
+    
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'تأكيد الهوية',
+          style: GoogleFonts.cairo(
+            fontWeight: FontWeight.bold,
+            color: AppColors.primaryColor,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // الهيدر
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 5),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    BubbleButton(icon: Icons.arrow_back, onTap: () {}),
-                    Text(
-                      'الحساب',
-                      style: GoogleFonts.cairo(
-                        color: AppColors.primaryColor,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(width: 50),
-                  ],
+            Text(
+              'تم إرسال رمز التحقق إلى رقم WhatsApp',
+              style: GoogleFonts.cairo(fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              phone,
+              style: GoogleFonts.cairo(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryColor,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: otpController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              maxLength: 5,
+              style: GoogleFonts.cairo(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 8,
+              ),
+              decoration: InputDecoration(
+                hintText: '00000',
+                hintStyle: GoogleFonts.cairo(
+                  color: Colors.grey[300],
+                  letterSpacing: 8,
+                ),
+                counterText: '',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.primaryColor, width: 2),
                 ),
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            // المحتوى
-            Expanded(
-              child: _isLoading
-                  ? Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primaryColor,
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 90),
-                      child: Column(
-                        children: [
-                          // بطاقة المستخدم أو تسجيل الدخول
-                          AuthService.isLoggedIn
-                              ? _buildUserCard()
-                              : _buildLoginCard(),
-
-                          const SizedBox(height: 20),
-
-                          // بطاقة القائمة
-                          _buildMenuCard(),
-                        ],
-                      ),
-                    ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () async {
+                // إعادة إرسال OTP
+                await _sendOtpForVerification(phone, customerId);
+              },
+              child: Text(
+                'إعادة إرسال الرمز',
+                style: GoogleFonts.cairo(
+                  color: AppColors.primaryColor,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('إلغاء', style: GoogleFonts.cairo(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (otpController.text.length != 5) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'الرجاء إدخال رمز مكون من 5 أرقام',
+                      style: GoogleFonts.cairo(),
+                      textAlign: TextAlign.center,
+                    ),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                return;
+              }
+              
+              // التحقق من OTP
+              final result = await AuthService.verifyOtp(
+                phone: phone,
+                otp: otpController.text,
+                customerId: customerId,
+              );
+              
+              if (result['success'] == true) {
+                Navigator.pop(context, true);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      result['message'] ?? 'الرمز غير صحيح',
+                      style: GoogleFonts.cairo(),
+                      textAlign: TextAlign.center,
+                    ),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text('تأكيد', style: GoogleFonts.cairo(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // عرض دايلوج تعديل الاسم
+  Future<void> _showNameEditDialog() async {
+    final TextEditingController nameController = TextEditingController(
+      text: _customerInfo?['full_name'] ?? '',
+    );
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'تعديل الاسم',
+          style: GoogleFonts.cairo(
+            fontWeight: FontWeight.bold,
+            color: AppColors.primaryColor,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: TextField(
+          controller: nameController,
+          textAlign: TextAlign.right,
+          decoration: InputDecoration(
+            hintText: 'الاسم الكامل',
+            hintStyle: GoogleFonts.cairo(color: Colors.grey),
+            prefixIcon: Icon(Icons.person_outline, color: AppColors.primaryColor),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primaryColor, width: 2),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('إلغاء', style: GoogleFonts.cairo(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'الرجاء إدخال الاسم',
+                      style: GoogleFonts.cairo(),
+                      textAlign: TextAlign.center,
+                    ),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text('حفظ', style: GoogleFonts.cairo(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    // إذا تم التأكيد، احفظ الاسم الجديد
+    if (confirmed == true && mounted) {
+      final newName = nameController.text.trim();
+      final success = await AuthService.updateCustomerName(newName);
+      
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'تم تحديث الاسم بنجاح',
+                style: GoogleFonts.cairo(),
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // إعادة تحميل معلومات العميل
+          _loadCustomerInfo();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'حدث خطأ أثناء التحديث',
+                style: GoogleFonts.cairo(),
+                textAlign: TextAlign.center,
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: _isLoading
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.primaryColor,
+                ),
+              )
+            : SafeArea(
+                bottom: false, // السماح للمحتوى بالظهور خلف Bottom Nav
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 100),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                    child: Column(
+                      children: [
+                        // الهيدر
+                        Padding(
+                          padding: const EdgeInsets.all(15),
+                          child: const MyText(text: 'الحساب', fontSize: 24),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        // بطاقة المستخدم أو تسجيل الدخول
+                        AuthService.isLoggedIn
+                            ? _buildUserCard()
+                            : _buildLoginCard(),
+
+                        const SizedBox(height: 20),
+
+                        // بطاقة القائمة
+                        _buildMenuCard(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
       ),
     );
   }
@@ -265,9 +577,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // بطاقة المستخدم
   Widget _buildUserCard() {
-    final name = _customerInfo?['full_name'] ?? 'مستخدم';
+    final name = _customerInfo?['name'] ?? _customerInfo?['full_name'] ?? 'مستخدم';
     final phone = _customerInfo?['phone'] ?? '';
-    final address = _customerInfo?['address'] ?? 'لم يتم تحديد العنوان';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -285,11 +596,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Row(
         children: [
+          // صورة المستخدم
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primaryColor.withOpacity(0.1),
+            ),
+            child: Icon(
+              Icons.person,
+              color: AppColors.primaryColor,
+              size: 32,
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // بيانات المستخدم
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  name,
+                  style: GoogleFonts.cairo(
+                    color: AppColors.primaryColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+                const SizedBox(height: 4),
+                if (phone.isNotEmpty)
+                  Text(
+                    phone,
+                    style: GoogleFonts.cairo(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
           // أيقونة التعديل
           InkWell(
-            onTap: () {
-              // TODO: فتح شاشة تعديل الملف الشخصي
-            },
+            onTap: _showEditProfileDialog,
             child: Container(
               width: 40,
               height: 40,
@@ -306,59 +662,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: AppColors.primaryColor,
                 size: 20,
               ),
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          // بيانات المستخدم
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: GoogleFonts.cairo(
-                    color: AppColors.primaryColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                if (phone.isNotEmpty)
-                  Text(
-                    phone,
-                    style: GoogleFonts.cairo(
-                      color: Colors.grey[600],
-                      fontSize: 13,
-                    ),
-                  ),
-                const SizedBox(height: 2),
-                Text(
-                  address,
-                  style: GoogleFonts.cairo(
-                    color: Colors.grey[500],
-                    fontSize: 12,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-
-          // صورة المستخدم
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primaryColor.withOpacity(0.1),
-            ),
-            child: Icon(
-              Icons.person,
-              color: AppColors.primaryColor,
-              size: 32,
             ),
           ),
         ],
@@ -488,16 +791,6 @@ class MyMenuItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Expanded(
-              child: Text(
-                title,
-                style: GoogleFonts.cairo(
-                  color: AppColors.primaryColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
             Container(
               width: 40,
               height: 40,
@@ -506,6 +799,18 @@ class MyMenuItem extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.cairo(
+                  color: AppColors.primaryColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.right,
+              ),
             ),
           ],
         ),

@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
+import 'cart_update_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // خدمة السلة المحلية - تخزين السلة محلياً قبل تسجيل الدخول
@@ -129,6 +131,10 @@ class LocalCartService {
       await clearLocalCart();
 
       print('✅ تم نقل ${localCart.length} منتج إلى قاعدة البيانات');
+      
+      // إشعار بتغيير السلة
+      CartUpdateService.notifyCartChanged();
+      
       return true;
     } catch (e) {
       print('❌ خطأ في نقل السلة إلى قاعدة البيانات: $e');
@@ -141,7 +147,9 @@ class LocalCartService {
     try {
       final cart = await loadLocalCart();
       cart[itemId] = (cart[itemId] ?? 0) + quantity;
-      return await saveLocalCart(cart);
+      final result = await saveLocalCart(cart);
+      if (result) CartUpdateService.notifyCartChanged();
+      return result;
     } catch (e) {
       print('❌ خطأ في إضافة المنتج للسلة المحلية: $e');
       return false;
@@ -157,7 +165,9 @@ class LocalCartService {
       } else {
         cart[itemId] = quantity;
       }
-      return await saveLocalCart(cart);
+      final result = await saveLocalCart(cart);
+      if (result) CartUpdateService.notifyCartChanged();
+      return result;
     } catch (e) {
       print('❌ خطأ في تحديث المنتج في السلة المحلية: $e');
       return false;
@@ -169,7 +179,9 @@ class LocalCartService {
     try {
       final cart = await loadLocalCart();
       cart.remove(itemId);
-      return await saveLocalCart(cart);
+      final result = await saveLocalCart(cart);
+      if (result) CartUpdateService.notifyCartChanged();
+      return result;
     } catch (e) {
       print('❌ خطأ في حذف المنتج من السلة المحلية: $e');
       return false;

@@ -5,7 +5,6 @@ import 'package:alkafage/screens/orders/in_progress_screen.dart';
 import 'package:alkafage/screens/orders/completed_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 import 'dart:ui';
 import '../../utls/constants.dart';
 
@@ -113,22 +112,21 @@ class _OrdersScreenState extends State<OrdersScreen>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // زر الرجوع على اليسار
-                        BubbleButton(
-                          icon: Icons.arrow_back,
-                          onTap: () {
-                            Get.back();
-                          },
+                        // زر الرجوع على اليسار مع عكس الأيقونة
+                        Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()..scale(-1.0, 1.0, 1.0),
+                          child: BubbleButton(
+                            icon: Icons.arrow_forward,
+                            onTap: () {
+                              Navigator.pop(context);
+                            },
+                          ),
                         ),
                         // النص في الوسط
                         MyText(text: "واجهة الطلبات"),
                         // مساحة فارغة للتوازن
-                        BubbleButton(
-                          icon: Icons.person,
-                          onTap: () {
-                            // وظيفة زر الرجوع
-                          },
-                        ),
+                        const SizedBox(width: 40),
                       ],
                     ),
                   ),

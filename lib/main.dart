@@ -13,12 +13,6 @@ import 'screens/profile_screen.dart';
 import 'screens/product_screen/Product_Screen.dart';
 import 'screens/splash_screen.dart';
 
-// RouteObserver للتتبع عند الدخول والخروج من الشاشات
-final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
-
-// Notifier لإعادة تحميل السلة عند التبديل إليها
-final ValueNotifier<int> cartReloadNotifier = ValueNotifier<int>(0);
-
 class SupabaseConfig {
   static const String supabaseUrl = 'https://ibwawjjqewuikmmnxqgo.supabase.co';
 
@@ -79,13 +73,6 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
   void _onItemTapped(int index) {
-    // إذا تم التبديل للسلة (index 2)، نرسل إشعار لإعادة التحميل
-    if (index == 2 && _selectedIndex != 2) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        cartReloadNotifier.value++;
-      });
-    }
-
     setState(() {
       _selectedIndex = index;
     });

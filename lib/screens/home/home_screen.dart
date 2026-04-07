@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
 import '../../utls/constants.dart';
+import '../../widget/Mytext.dart';
 import 'part_items_screen.dart';
 import '../../widget/product_card.dart';
 import '../../widget/bubble_button.dart';
@@ -27,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final homeController = Get.find<HomeController>();
   int _currentBannerIndex = 0;
   final PageController _bannerController = PageController();
+  Timer? _bannerAutoPlayTimer;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // تحميل البيانات
@@ -40,10 +43,31 @@ class _HomeScreenState extends State<HomeScreen> {
     if (homeController.parts.isEmpty && !homeController.isLoading.value) {
       homeController.loadData();
     }
+    // بدء التشغيل التلقائي للبانر
+    _startBannerAutoPlay();
+  }
+
+  /// بدء التشغيل التلقائي للبانر كل 5 ثواني
+  void _startBannerAutoPlay() {
+    _bannerAutoPlayTimer?.cancel();
+    _bannerAutoPlayTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_bannerController.hasClients && homeController.banners.isNotEmpty) {
+        int nextPage = _currentBannerIndex + 1;
+        if (nextPage >= homeController.banners.length) {
+          nextPage = 0;
+        }
+        _bannerController.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
+    _bannerAutoPlayTimer?.cancel();
     _bannerController.dispose();
     super.dispose();
   }
@@ -64,57 +88,109 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             : SafeArea(
                 bottom: false,
-                child: RefreshIndicator(
-                  onRefresh: homeController.loadData,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 100),
-                    child: Column(
-                      children: [
-                        // ═══════════════════════════════════════════════════
-                        // الهيدر
-                        // ═══════════════════════════════════════════════════
-                        Padding(
-                          padding: const EdgeInsets.all(15),
-                          child: Text(
-                            'شركة القرش',
-                            style: GoogleFonts.cairo(
-                              color: AppColors.primaryColor,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
+                child: Column(
+                  children: [
+                    // ═══════════════════════════════════════════════════
+                    // الهيدر الثابت - اسم الشركة بتصميم احترافي
+                    // ═══════════════════════════════════════════════════
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // الشعار الأيسر
+                          Container(
+                            width: 45,
+                            height: 2,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  AppColors.primaryColor.withOpacity(0.5),
+                                  AppColors.primaryColor,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(1),
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 15),
+                          // اسم الشركة
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const MyText(text: 'شركة القرش', fontSize: 28),
+                              const SizedBox(height: 2),
+                              Text(
+                                'AL-QIRSH COMPANY',
+                                style: GoogleFonts.poppins(
+                                  color: AppColors.primaryColor.withOpacity(0.6),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 4,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 15),
+                          // الشعار الأيمن
+                          Container(
+                            width: 45,
+                            height: 2,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primaryColor,
+                                  AppColors.primaryColor.withOpacity(0.5),
+                                  Colors.transparent,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-                        // ═══════════════════════════════════════════════════
-                        // البانرات
-                        // ═══════════════════════════════════════════════════
-                        if (homeController.banners.isNotEmpty) ...[
-                          SizedBox(
-                            height: 160,
-                            child: PageView.builder(
-                              controller: _bannerController,
-                              onPageChanged: (index) {
-                                setState(() => _currentBannerIndex = index);
-                              },
-                              itemCount: homeController.banners.length,
-                              itemBuilder: (context, index) {
-                                final banner = homeController.banners[index];
-                                final bannerImagePath = banner['image_path'] ??
-                                    'assets/img/main.png';
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 30,
-                                  ),
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 15,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    image: DecorationImage(
-                                      image: bannerImagePath.startsWith('http')
-                                          ? NetworkImage(bannerImagePath)
-                                          : AssetImage(bannerImagePath)
-                                              as ImageProvider,
+                    // ═══════════════════════════════════════════════════
+                    // المحتوى المتحرك (Scrollable)
+                    // ═══════════════════════════════════════════════════
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: homeController.loadData,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.only(bottom: 100),
+                          child: Column(
+                            children: [
+                              // ═══════════════════════════════════════════════════
+                              // البانرات
+                              // ═══════════════════════════════════════════════════
+                              if (homeController.banners.isNotEmpty) ...[
+                                SizedBox(
+                                  height: 160,
+                                  child: PageView.builder(
+                                    controller: _bannerController,
+                                    onPageChanged: (index) {
+                                      setState(() => _currentBannerIndex = index);
+                                    },
+                                    itemCount: homeController.banners.length,
+                                    itemBuilder: (context, index) {
+                                      final banner = homeController.banners[index];
+                                      final bannerImagePath = banner['image_path'] ??
+                                          'assets/img/main.png';
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 30,
+                                        ),
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 15,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(16),
+                                          image: DecorationImage(
+                                            image: bannerImagePath.startsWith('http')
+                                                ? NetworkImage(bannerImagePath)
+                                                : AssetImage(bannerImagePath)
+                                                    as ImageProvider,
                                       fit: BoxFit.cover,
                                     ),
                                   ),
@@ -255,7 +331,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-              )),
+              ),
+            ],
+          ),
+        )),
       ),
     );
   }

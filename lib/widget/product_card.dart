@@ -9,6 +9,7 @@ import '../utls/constants.dart';
 import '../screens/product_detail_screen.dart';
 import '../services/auth_service.dart';
 import '../services/local_cart_service.dart';
+import '../services/cart_update_service.dart';
 import '../screens/favorites_screen.dart';
 import '../main.dart';
 
@@ -27,7 +28,7 @@ class ProductCard extends StatefulWidget {
     super.key,
     required this.item,
     this.width,
-    this.imageHeight = 140,
+    this.imageHeight = 160,
     this.onTap,
   });
 
@@ -340,7 +341,7 @@ class _ProductCardState extends State<ProductCard> {
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.cairo(
                       color: AppColors.primaryColor,
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: FontWeight.bold,
                       height: 1.2,
                     ),
@@ -355,37 +356,38 @@ class _ProductCardState extends State<ProductCard> {
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.cairo(
                         color: Colors.grey[600],
-                        fontSize: 9,
-                        height: 1.2,
+                        fontSize: 10,
+                        height: 1.1,
                       ),
                     ),
 
+                  const SizedBox(height: 2),
+
                   // السعر
                   if (hasDiscount)
-                    Column(
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // السعر القديم مشطوب
-                        Text(
-                          '${basePrice.toStringAsFixed(0)} د.ع',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.cairo(
-                            color: Colors.grey[500],
-                            fontSize: 10,
-                            decoration: TextDecoration.lineThrough,
-                            decorationColor: Colors.grey[500],
-                            decorationThickness: 2,
-                            height: 1.3,
-                          ),
-                        ),
                         // السعر الجديد
                         Text(
                           '${effectivePrice.toStringAsFixed(0)} د.ع',
-                          textAlign: TextAlign.center,
                           style: GoogleFonts.cairo(
                             color: const Color(0xFFE53935),
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            height: 1.3,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        // السعر القديم مشطوب
+                        Text(
+                          '${basePrice.toStringAsFixed(0)}',
+                          style: GoogleFonts.cairo(
+                            color: Colors.grey[500],
+                            fontSize: 11,
+                            decoration: TextDecoration.lineThrough,
+                            decorationColor: Colors.grey[500],
+                            height: 1.2,
                           ),
                         ),
                       ],
@@ -396,9 +398,9 @@ class _ProductCardState extends State<ProductCard> {
                       textAlign: TextAlign.center,
                       style: GoogleFonts.cairo(
                         color: AppColors.primaryColor,
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        height: 1.3,
+                        height: 1.2,
                       ),
                     ),
 
@@ -457,11 +459,24 @@ class _AddToCartButton extends StatefulWidget {
 class _AddToCartButtonState extends State<_AddToCartButton> {
   int _quantity = 0;
   static final _supabase = Supabase.instance.client;
+  StreamSubscription<bool>? _cartSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadQuantity();
+    
+    // الاستماع للتغييرات من CartUpdateService
+    _cartSubscription = CartUpdateService.cartChangeStream.listen((_) {
+      print('🔔 [ProductCard] تم استقبال إشعار بتغيير في السلة - إعادة تحميل الكمية');
+      _loadQuantity();
+    });
+  }
+
+  @override
+  void dispose() {
+    _cartSubscription?.cancel();
+    super.dispose();
   }
 
   // تحميل الكمية حسب حالة تسجيل الدخول
@@ -546,52 +561,32 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
   // تحديث الكمية
   Future<bool> _updateQuantity(int itemId, int newQuantity) async {
     if (AuthService.isLoggedIn) {
-      // تحديث في قاعدة البيانات
-      return await _updateQuantityInDB(itemId, newQuantity);
-    } else {
-      // تحديث محلياً
-      return await LocalCartService.updateLocalCartItem(itemId, newQuantity);
-    }
-  }
-
-  // تحديث الكمية في قاعدة البيانات
-  Future<bool> _updateQuantityInDB(int itemId, int newQuantity) async {
-    final cartId = await _getOrCreateCart();
-    if (cartId == null) return false;
-
-    try {
+      // تحديث في قاعدة البيانات باستخدام AuthService
       if (newQuantity <= 0) {
-        await _supabase
-            .from('cart_items')
-            .delete()
-            .eq('cart_id', cartId)
-            .eq('item_id', itemId);
-        return true;
-      }
-
-      final existingItem = await _supabase
-          .from('cart_items')
-          .select('id')
-          .eq('cart_id', cartId)
-          .eq('item_id', itemId)
-          .maybeSingle();
-
-      if (existingItem != null) {
-        await _supabase.from('cart_items').update({
-          'quantity': newQuantity,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', existingItem['id']);
+        return await AuthService.deleteFromCart(itemId);
       } else {
-        await _supabase.from('cart_items').insert({
-          'cart_id': cartId,
-          'item_id': itemId,
-          'quantity': newQuantity,
-        });
+        // التحقق من وجود المنتج في السلة
+        final cartId = await _getOrCreateCart();
+        if (cartId == null) return false;
+        
+        final existingItem = await _supabase
+            .from('cart_items')
+            .select('id')
+            .eq('cart_id', cartId)
+            .eq('item_id', itemId)
+            .maybeSingle();
+        
+        if (existingItem != null) {
+          // تحديث الكمية
+          return await AuthService.updateCartItemQuantity(itemId, newQuantity);
+        } else {
+          // إضافة منتج جديد
+          return await AuthService.addToCart(itemId, newQuantity);
+        }
       }
-      return true;
-    } catch (e) {
-      print('❌ خطأ في تحديث الكمية: $e');
-      return false;
+    } else {
+      // تحديث محلياً - LocalCartService يرسل الإشعار تلقائياً
+      return await LocalCartService.updateLocalCartItem(itemId, newQuantity);
     }
   }
 

@@ -148,13 +148,8 @@ class OrderService {
 
       await _supabase.from('order_items').insert(orderItemsData);
 
-      // 7. إضافة سجل حالة الطلب
-      await _supabase.from('order_status_history').insert({
-        'order_id': orderId,
-        'status': 'pending',
-        'changed_by': AuthService.authUserId,
-        'notes': 'تم إنشاء الطلب',
-      });
+      // ملاحظة: سجل حالة الطلب يُنشأ تلقائياً عبر Trigger في قاعدة البيانات
+      // لذلك لا نحتاج إضافته يدوياً
 
       // 8. تفريغ السلة بعد إنشاء الطلب بنجاح
       await AuthService.clearCart();

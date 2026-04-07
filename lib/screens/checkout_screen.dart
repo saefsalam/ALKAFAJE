@@ -5,6 +5,7 @@ import '../services/order_service.dart';
 import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../models/customer_location_model.dart';
+import '../widget/bubble_button.dart';
 import 'orders/order_detail_screen.dart';
 import 'addresses/select_location_bottom_sheet.dart';
 
@@ -298,7 +299,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context); // إغلاق الـ dialog
-              Navigator.pop(context, true); // الرجوع للسلة مع إشارة النجاح
+              Navigator.of(context, rootNavigator: true).pop(true); // الرجوع للسلة مع إشارة النجاح
             },
             child: Text(
               'العودة للتسوق',
@@ -355,76 +356,113 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppColors.primaryColor),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'إتمام الطلب',
-          style: GoogleFonts.cairo(
-            color: AppColors.primaryColor,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            // صورة الخلفية
+            Positioned.fill(
+              child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
+            ),
+            // المحتوى
+            SafeArea(
+              bottom: false, // السماح للمحتوى بالظهور خلف Bottom Nav
+              child: _isLoadingZones
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppColors.primaryColor),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.only(
+                          left: 15.0, right: 15.0, top: 5.0, bottom: 0),
+                      child: Column(
+                        children: [
+                          // الهيدر
+                          Padding(
+                            padding: const EdgeInsets.only(top: 5),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const SizedBox(width: 40), // للتوازن
+                                Text(
+                                  'إتمام الطلب',
+                                  style: GoogleFonts.cairo(
+                                    color: AppColors.primaryColor,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Transform.scale(
+                                  scaleX: -1, // عكس الأيقونة أفقياً
+                                  child: BubbleButton(
+                                    icon: Icons.arrow_back,
+                                    onTap: () => Navigator.pop(context),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // المحتوى القابل للتمرير
+                          Expanded(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.only(bottom: 100),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // ─── ملخص المنتجات ───
+                                  _buildSectionTitle('المنتجات (${widget.cartItems.length})',
+                                      Icons.shopping_bag_outlined),
+                                  const SizedBox(height: 8),
+                                  _buildProductsSummary(),
+
+                                  const SizedBox(height: 20),
+
+                                  // ─── موقع التوصيل ───
+                                  _buildSectionTitle(
+                                      'موقع التوصيل', Icons.my_location_outlined),
+                                  const SizedBox(height: 8),
+                                  _buildLocationSelector(),
+
+                                  const SizedBox(height: 20),
+
+                                  // ─── العنوان التفصيلي ───
+                                  _buildSectionTitle('العنوان التفصيلي', Icons.home_outlined),
+                                  const SizedBox(height: 8),
+                                  _buildAddressField(),
+
+                                  const SizedBox(height: 20),
+
+                                  // ─── ملاحظات ───
+                                  _buildSectionTitle('ملاحظات (اختياري)', Icons.note_outlined),
+                                  const SizedBox(height: 8),
+                                  _buildNoteField(),
+
+                                  const SizedBox(height: 24),
+
+                                  // ─── ملخص الأسعار ───
+                                  _buildPriceSummary(),
+
+                                  const SizedBox(height: 20),
+
+                                  // ─── زر تأكيد الطلب ───
+                                  _buildSubmitButton(),
+
+                                  const SizedBox(height: 30),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ],
         ),
       ),
-      body: _isLoadingZones
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryColor),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // ─── ملخص المنتجات ───
-                  _buildSectionTitle('المنتجات (${widget.cartItems.length})',
-                      Icons.shopping_bag_outlined),
-                  const SizedBox(height: 8),
-                  _buildProductsSummary(),
-
-                  const SizedBox(height: 20),
-
-                  // ─── موقع التوصيل ───
-                  _buildSectionTitle(
-                      'موقع التوصيل', Icons.my_location_outlined),
-                  const SizedBox(height: 8),
-                  _buildLocationSelector(),
-
-                  const SizedBox(height: 20),
-
-                  // ─── العنوان التفصيلي ───
-                  _buildSectionTitle('العنوان التفصيلي', Icons.home_outlined),
-                  const SizedBox(height: 8),
-                  _buildAddressField(),
-
-                  const SizedBox(height: 20),
-
-                  // ─── ملاحظات ───
-                  _buildSectionTitle('ملاحظات (اختياري)', Icons.note_outlined),
-                  const SizedBox(height: 8),
-                  _buildNoteField(),
-
-                  const SizedBox(height: 24),
-
-                  // ─── ملخص الأسعار ───
-                  _buildPriceSummary(),
-
-                  const SizedBox(height: 20),
-
-                  // ─── زر تأكيد الطلب ───
-                  _buildSubmitButton(),
-
-                  const SizedBox(height: 30),
-                ],
-              ),
-            ),
     );
   }
 
@@ -504,6 +542,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: 10),
                   // السعر
                   Text(
                     '${lineTotal.toStringAsFixed(0)} د.ع',
@@ -633,19 +672,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          label,
-          style: GoogleFonts.cairo(
-            fontSize: isLarge ? 17 : 14,
-            fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-            color: isBold ? AppColors.primaryColor : Colors.grey[700],
-          ),
-        ),
-        Text(
           value,
           style: GoogleFonts.cairo(
             fontSize: isLarge ? 18 : 14,
             fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
             color: isBold ? AppColors.primaryColor : Colors.black87,
+          ),
+        ),
+        Text(
+          label,
+          style: GoogleFonts.cairo(
+            fontSize: isLarge ? 17 : 14,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+            color: isBold ? AppColors.primaryColor : Colors.grey[700],
           ),
         ),
       ],
