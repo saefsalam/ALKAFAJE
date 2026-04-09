@@ -1,6 +1,6 @@
-import 'dart:math';
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/product_model.dart';
 import 'cart_update_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -9,9 +9,13 @@ import 'cart_update_service.dart';
 
 class AuthService {
   static final _supabase = Supabase.instance.client;
+  static bool? _cartOptionsSchemaSupported;
+  static String? _lastCartOperationError;
 
   // shop_id من main.dart
   static const String DEFAULT_SHOP_ID = '550e8400-e29b-41d4-a716-446655440001';
+  static const String _cartOptionsMigrationMessage =
+      'قاعدة البيانات تحتاج تحديث دعم الألوان والأحجام قبل حفظ خيارات المنتج في السلة.';
 
   // الحصول على المستخدم الحالي
   static User? get currentUser => _supabase.auth.currentUser;
@@ -22,6 +26,7 @@ class AuthService {
   // معلومات المستخدم
   static String? get userEmail => currentUser?.email;
   static String? get authUserId => currentUser?.id;
+  static String? get lastCartOperationError => _lastCartOperationError;
 
   static String _fallbackCustomerName(User user) {
     final dynamic fullName = user.userMetadata?['full_name'];
@@ -207,18 +212,17 @@ class AuthService {
 //   constraint whatsapp_otps_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete CASCADE,
 //   constraint whatsapp_otps_shop_id_fkey foreign KEY (shop_id) references shops (id) on delete CASCADE
 // ) TABLESPACE pg_default;
-      final otp = _generateOtp();
-      await _supabase.from('whatsapp_otps').insert({
-        'phone': phone,
-        'customer_id': result['id'],
-        'shop_id': DEFAULT_SHOP_ID,
-        'otp': otp,
-        'is_sent': false,
-        'expires_at':
-            DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-      });
+      // إنشاء OTP عبر Database Function
+      final otpResult = await _createOtpViaDatabase(
+        phone: phone,
+        customerId: result['id'] as int,
+      );
 
-      print('📱 تم توليد OTP: $otp');
+      if (otpResult['success'] == true) {
+        print('📱 تم توليد OTP من قاعدة البيانات: ${otpResult['otp']}');
+      } else {
+        print('⚠️ فشل في إنشاء OTP: ${otpResult['message']}');
+      }
 
       print('✅ تم إنشاء سجل العميل بنجاح - customer_id: ${result['id']}');
       return result['id'] as int;
@@ -374,26 +378,23 @@ class AuthService {
     required int customerId,
   }) async {
     try {
-      // توليد رمز OTP جديد (5 أرقام)
-      final newOtp = _generateOtp();
+      // إنشاء OTP جديد عبر Database Function
+      final otpResult = await _createOtpViaDatabase(
+        phone: phone,
+        customerId: customerId,
+      );
 
-      // إدراج رمز جديد في قاعدة البيانات
-      await _supabase.from('whatsapp_otps').insert({
-        'phone': phone,
-        'customer_id': customerId,
-        'shop_id': DEFAULT_SHOP_ID,
-        'otp': newOtp,
-        'is_sent': false,
-        'expires_at':
-            DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-      });
-
-      print('✅ تم إنشاء رمز OTP جديد: $newOtp');
-
-      // TODO: إرسال الرمز عبر WhatsApp أو SMS
-      // await _sendOtpViaWhatsApp(phone, newOtp);
-
-      return {'success': true, 'message': 'تم إرسال رمز جديد'};
+      if (otpResult['success'] == true) {
+        print('✅ تم إنشاء رمز OTP جديد من قاعدة البيانات: ${otpResult['otp']}');
+        // TODO: إرسال الرمز عبر WhatsApp أو SMS
+        // await _sendOtpViaWhatsApp(phone, otpResult['otp']);
+        return {'success': true, 'message': 'تم إرسال رمز جديد'};
+      } else {
+        return {
+          'success': false,
+          'message': otpResult['message'] ?? 'فشل في إنشاء الرمز'
+        };
+      }
     } catch (e) {
       print('❌ خطأ في إعادة إرسال OTP: $e');
       return {'success': false, 'message': 'فشل في إعادة إرسال الرمز'};
@@ -425,11 +426,32 @@ class AuthService {
     }
   }
 
-  /// توليد رمز OTP عشوائي (5 أرقام)
-  static String _generateOtp() {
-    final random = Random();
-    // توليد رقم عشوائي من 10000 إلى 99999 (5 أرقام)
-    return (10000 + random.nextInt(90000)).toString();
+  /// إنشاء OTP عبر Database Function (يتم توليده في قاعدة البيانات)
+  static Future<Map<String, dynamic>> _createOtpViaDatabase({
+    required String phone,
+    required int customerId,
+  }) async {
+    try {
+      final result = await _supabase.rpc('create_otp', params: {
+        'p_phone': phone,
+        'p_customer_id': customerId,
+        'p_shop_id': DEFAULT_SHOP_ID,
+      });
+
+      if (result != null && result is List && result.isNotEmpty) {
+        final otpData = result.first;
+        return {
+          'success': true,
+          'otp': otpData['otp_code'],
+          'otp_id': otpData['otp_id'],
+        };
+      }
+
+      return {'success': false, 'message': 'فشل في إنشاء رمز التحقق'};
+    } catch (e) {
+      print('❌ خطأ في إنشاء OTP من قاعدة البيانات: $e');
+      return {'success': false, 'message': 'خطأ في إنشاء رمز التحقق'};
+    }
   }
 
   /// التسجيل عبر رقم الهاتف (يُنشئ حساب Supabase Auth + سجل customer + OTP)
@@ -474,7 +496,7 @@ class AuthService {
       // حفظ معلومات المستخدم مؤقتاً ثم تسجيل الخروج
       // لأننا لا نريد أن يكون مسجل دخول قبل التحقق من OTP
       final authUserId = response.user!.id;
-      
+
       // إنشاء سجل العميل
       final customerId = await _createCustomerRecord(
         authUserId: authUserId,
@@ -554,24 +576,23 @@ class AuthService {
       // حفظ معرف المستخدم ثم تسجيل الخروج مؤقتاً
       // لأننا لا نريد أن يكون مسجل دخول قبل التحقق من OTP
       final authUserId = response.user!.id;
-      
+
       // تسجيل الخروج مؤقتاً
       await _supabase.auth.signOut();
       print('🔐 تم تسجيل الخروج مؤقتاً بانتظار التحقق من OTP');
 
-      // إنشاء OTP جديد للتحقق
-      final otp = _generateOtp();
-      await _supabase.from('whatsapp_otps').insert({
-        'phone': phone,
-        'customer_id': customer['id'],
-        'shop_id': DEFAULT_SHOP_ID,
-        'otp': otp,
-        'is_sent': false,
-        'expires_at':
-            DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-      });
+      // إنشاء OTP جديد للتحقق عبر Database Function
+      final otpResult = await _createOtpViaDatabase(
+        phone: phone,
+        customerId: customer['id'] as int,
+      );
 
-      print('📱 تم توليد OTP لتسجيل الدخول: $otp');
+      if (otpResult['success'] == true) {
+        print(
+            '📱 تم توليد OTP لتسجيل الدخول من قاعدة البيانات: ${otpResult['otp']}');
+      } else {
+        print('⚠️ فشل في إنشاء OTP: ${otpResult['message']}');
+      }
 
       return {
         'success': true,
@@ -649,10 +670,110 @@ class AuthService {
   /// جلب عناصر السلة من قاعدة البيانات
   static Future<List<Map<String, dynamic>>> getCartItems() async {
     try {
+      _clearCartOperationError();
       final cartId = await _getOrCreateCart();
       if (cartId == null) return [];
 
-      final data = await _supabase.from('cart_items').select('''
+      if (_cartOptionsSchemaSupported == false) {
+        return await _getLegacyCartItems(cartId);
+      }
+
+      try {
+        final List<Map<String, dynamic>> items = await _getCartItemsWithOptions(
+          cartId,
+        );
+        _cartOptionsSchemaSupported = true;
+        return items;
+      } catch (e) {
+        if (_isMissingCartOptionsSchemaError(e)) {
+          _cartOptionsSchemaSupported = false;
+          return await _getLegacyCartItems(cartId);
+        }
+        rethrow;
+      }
+    } catch (e) {
+      print('❌ خطأ في جلب عناصر السلة: $e');
+      return [];
+    }
+  }
+
+  static ProductOptionSelection _normalizeSelection(
+    ProductOptionSelection? selection,
+  ) {
+    return selection ?? const ProductOptionSelection();
+  }
+
+  static void _clearCartOperationError() {
+    _lastCartOperationError = null;
+  }
+
+  static void _setCartOperationError(String message) {
+    _lastCartOperationError = message;
+  }
+
+  static bool _isMissingCartOptionsSchemaError(Object error) {
+    if (error is! PostgrestException) {
+      return false;
+    }
+
+    final String details =
+        '${error.code ?? ''} ${error.message} ${error.details ?? ''} ${error.hint ?? ''}'
+            .toLowerCase();
+
+    return details.contains('42703') &&
+        (details.contains('selection_key') ||
+            details.contains('selected_color') ||
+            details.contains('selected_size'));
+  }
+
+  static bool _isDefaultSelectionKey(String? selectionKey) {
+    return (selectionKey ?? buildProductSelectionKey()) ==
+        buildProductSelectionKey();
+  }
+
+  static Map<String, dynamic> _buildLegacyCartItem(
+    Map<String, dynamic> raw,
+  ) {
+    return <String, dynamic>{
+      ...raw,
+      ...const ProductOptionSelection().toCartPayload(),
+    };
+  }
+
+  static Future<List<Map<String, dynamic>>> _getCartItemsWithOptions(
+    int cartId,
+  ) async {
+    final data = await _supabase.from('cart_items').select('''
+        id,
+        quantity,
+        item_id,
+        selection_key,
+        selected_color_id,
+        selected_color_name,
+        selected_color_hex,
+        selected_size_id,
+        selected_size_name,
+        items (
+          id,
+          title,
+          description,
+          price,
+          discount_price,
+          discount_percent,
+          item_images (
+            image_path,
+            is_primary
+          )
+        )
+      ''').eq('cart_id', cartId).order('created_at', ascending: false);
+
+    return List<Map<String, dynamic>>.from(data);
+  }
+
+  static Future<List<Map<String, dynamic>>> _getLegacyCartItems(
+    int cartId,
+  ) async {
+    final data = await _supabase.from('cart_items').select('''
         id,
         quantity,
         item_id,
@@ -670,40 +791,119 @@ class AuthService {
         )
       ''').eq('cart_id', cartId).order('created_at', ascending: false);
 
-      return List<Map<String, dynamic>>.from(data);
-    } catch (e) {
-      print('❌ خطأ في جلب عناصر السلة: $e');
-      return [];
+    return List<Map<String, dynamic>>.from(data)
+        .map(_buildLegacyCartItem)
+        .toList();
+  }
+
+  static Future<bool> _addToCartLegacy(
+    int cartId,
+    int itemId,
+    int quantity,
+  ) async {
+    final existing = await _supabase
+        .from('cart_items')
+        .select('id, quantity')
+        .eq('cart_id', cartId)
+        .eq('item_id', itemId)
+        .order('id')
+        .limit(1)
+        .maybeSingle();
+
+    if (existing != null) {
+      final int newQuantity = (existing['quantity'] as int) + quantity;
+      await _supabase
+          .from('cart_items')
+          .update({'quantity': newQuantity}).eq('id', existing['id']);
+      return true;
     }
+
+    await _supabase.from('cart_items').insert({
+      'cart_id': cartId,
+      'item_id': itemId,
+      'quantity': quantity,
+    });
+    return true;
+  }
+
+  static Future<bool> _deleteFromCartLegacy(int cartId, int itemId) async {
+    await _supabase
+        .from('cart_items')
+        .delete()
+        .eq('cart_id', cartId)
+        .eq('item_id', itemId);
+    return true;
+  }
+
+  static Future<bool> _updateCartItemQuantityLegacy(
+    int cartId,
+    int itemId,
+    int newQuantity,
+  ) async {
+    await _supabase
+        .from('cart_items')
+        .update({'quantity': newQuantity})
+        .eq('cart_id', cartId)
+        .eq('item_id', itemId);
+    return true;
   }
 
   /// إضافة منتج للسلة
-  static Future<bool> addToCart(int itemId, int quantity) async {
+  static Future<bool> addToCart(
+    int itemId,
+    int quantity, {
+    ProductOptionSelection? selection,
+  }) async {
     try {
+      _clearCartOperationError();
       final cartId = await _getOrCreateCart();
       if (cartId == null) return false;
+      final ProductOptionSelection normalizedSelection =
+          _normalizeSelection(selection);
 
-      // التحقق من وجود المنتج في السلة
-      final existing = await _supabase
-          .from('cart_items')
-          .select('id, quantity')
-          .eq('cart_id', cartId)
-          .eq('item_id', itemId)
-          .maybeSingle();
-
-      if (existing != null) {
-        // تحديث الكمية
-        final newQuantity = (existing['quantity'] as int) + quantity;
-        await _supabase
-            .from('cart_items')
-            .update({'quantity': newQuantity}).eq('id', existing['id']);
+      if (_cartOptionsSchemaSupported == false) {
+        if (!normalizedSelection.isEmpty) {
+          _setCartOperationError(_cartOptionsMigrationMessage);
+          return false;
+        }
+        await _addToCartLegacy(cartId, itemId, quantity);
       } else {
-        // إضافة منتج جديد
-        await _supabase.from('cart_items').insert({
-          'cart_id': cartId,
-          'item_id': itemId,
-          'quantity': quantity,
-        });
+        try {
+          final existing = await _supabase
+              .from('cart_items')
+              .select('id, quantity')
+              .eq('cart_id', cartId)
+              .eq('item_id', itemId)
+              .eq('selection_key', normalizedSelection.selectionKey)
+              .maybeSingle();
+
+          if (existing != null) {
+            final int newQuantity = (existing['quantity'] as int) + quantity;
+            await _supabase
+                .from('cart_items')
+                .update({'quantity': newQuantity}).eq('id', existing['id']);
+          } else {
+            await _supabase.from('cart_items').insert({
+              'cart_id': cartId,
+              'item_id': itemId,
+              'quantity': quantity,
+              ...normalizedSelection.toCartPayload(),
+            });
+          }
+          _cartOptionsSchemaSupported = true;
+        } catch (e) {
+          if (!_isMissingCartOptionsSchemaError(e)) {
+            rethrow;
+          }
+
+          _cartOptionsSchemaSupported = false;
+          if (!normalizedSelection.isEmpty) {
+            _setCartOperationError(_cartOptionsMigrationMessage);
+            return false;
+          }
+
+          await _addToCartLegacy(cartId, itemId, quantity);
+        }
       }
 
       // إشعار بتغيير السلة
@@ -711,52 +911,156 @@ class AuthService {
 
       return true;
     } catch (e) {
+      _setCartOperationError(
+        _lastCartOperationError ??
+            'تعذر إضافة المنتج إلى السلة حالياً. حاول مرة أخرى.',
+      );
       print('❌ خطأ في إضافة المنتج للسلة: $e');
       return false;
     }
   }
 
   /// حذف منتج من السلة
-  static Future<bool> deleteFromCart(int itemId) async {
+  static Future<bool> deleteFromCart(
+    int itemId, {
+    String? selectionKey,
+  }) async {
     try {
+      _clearCartOperationError();
       final cartId = await _getOrCreateCart();
       if (cartId == null) return false;
 
-      await _supabase
-          .from('cart_items')
-          .delete()
-          .eq('cart_id', cartId)
-          .eq('item_id', itemId);
+      final String normalizedSelectionKey =
+          selectionKey ?? buildProductSelectionKey();
+
+      if (_cartOptionsSchemaSupported == false) {
+        if (!_isDefaultSelectionKey(normalizedSelectionKey)) {
+          _setCartOperationError(_cartOptionsMigrationMessage);
+          return false;
+        }
+        await _deleteFromCartLegacy(cartId, itemId);
+      } else {
+        try {
+          final dynamic deleteQuery = _supabase
+              .from('cart_items')
+              .delete()
+              .eq('cart_id', cartId)
+              .eq('item_id', itemId);
+
+          await deleteQuery.eq('selection_key', normalizedSelectionKey);
+          _cartOptionsSchemaSupported = true;
+        } catch (e) {
+          if (!_isMissingCartOptionsSchemaError(e)) {
+            rethrow;
+          }
+
+          _cartOptionsSchemaSupported = false;
+          if (!_isDefaultSelectionKey(normalizedSelectionKey)) {
+            _setCartOperationError(_cartOptionsMigrationMessage);
+            return false;
+          }
+
+          await _deleteFromCartLegacy(cartId, itemId);
+        }
+      }
 
       // إشعار بتغيير السلة
       CartUpdateService.notifyCartChanged();
 
       return true;
     } catch (e) {
+      _setCartOperationError(
+        _lastCartOperationError ??
+            'تعذر حذف المنتج من السلة حالياً. حاول مرة أخرى.',
+      );
       print('❌ خطأ في حذف المنتج: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteCartItemById(int cartItemId) async {
+    try {
+      await _supabase.from('cart_items').delete().eq('id', cartItemId);
+      CartUpdateService.notifyCartChanged();
+      return true;
+    } catch (e) {
+      print('❌ خطأ في حذف عنصر السلة: $e');
       return false;
     }
   }
 
   /// تحديث كمية منتج في السلة
   static Future<bool> updateCartItemQuantity(
-      int itemId, int newQuantity) async {
+    int itemId,
+    int newQuantity, {
+    String? selectionKey,
+  }) async {
     try {
+      _clearCartOperationError();
       final cartId = await _getOrCreateCart();
       if (cartId == null) return false;
 
-      await _supabase
-          .from('cart_items')
-          .update({'quantity': newQuantity})
-          .eq('cart_id', cartId)
-          .eq('item_id', itemId);
+      final String normalizedSelectionKey =
+          selectionKey ?? buildProductSelectionKey();
+
+      if (_cartOptionsSchemaSupported == false) {
+        if (!_isDefaultSelectionKey(normalizedSelectionKey)) {
+          _setCartOperationError(_cartOptionsMigrationMessage);
+          return false;
+        }
+        await _updateCartItemQuantityLegacy(cartId, itemId, newQuantity);
+      } else {
+        try {
+          final dynamic updateQuery = _supabase
+              .from('cart_items')
+              .update({'quantity': newQuantity})
+              .eq('cart_id', cartId)
+              .eq('item_id', itemId);
+
+          await updateQuery.eq('selection_key', normalizedSelectionKey);
+          _cartOptionsSchemaSupported = true;
+        } catch (e) {
+          if (!_isMissingCartOptionsSchemaError(e)) {
+            rethrow;
+          }
+
+          _cartOptionsSchemaSupported = false;
+          if (!_isDefaultSelectionKey(normalizedSelectionKey)) {
+            _setCartOperationError(_cartOptionsMigrationMessage);
+            return false;
+          }
+
+          await _updateCartItemQuantityLegacy(cartId, itemId, newQuantity);
+        }
+      }
 
       // إشعار بتغيير السلة
       CartUpdateService.notifyCartChanged();
 
       return true;
     } catch (e) {
+      _setCartOperationError(
+        _lastCartOperationError ??
+            'تعذر تحديث كمية المنتج في السلة حالياً. حاول مرة أخرى.',
+      );
       print('❌ خطأ في تحديث الكمية: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateCartItemQuantityById(
+    int cartItemId,
+    int newQuantity,
+  ) async {
+    try {
+      await _supabase
+          .from('cart_items')
+          .update({'quantity': newQuantity}).eq('id', cartItemId);
+
+      CartUpdateService.notifyCartChanged();
+      return true;
+    } catch (e) {
+      print('❌ خطأ في تحديث كمية عنصر السلة: $e');
       return false;
     }
   }
@@ -787,8 +1091,7 @@ class AuthService {
       // تحديث في جدول customers
       await _supabase
           .from('customers')
-          .update({'name': newName})
-          .eq('auth_user_id', authUserId!);
+          .update({'name': newName}).eq('auth_user_id', authUserId!);
 
       // تحديث في auth metadata
       await _supabase.auth.updateUser(

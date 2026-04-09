@@ -36,73 +36,73 @@ class PartItemsScreen extends StatelessWidget {
           // المحتوى
           items.isEmpty
               ? Center(
-                child: Text(
-                  'لا توجد منتجات',
-                  style: GoogleFonts.cairo(fontSize: 16, color: Colors.grey),
-                ),
-              )
+                  child: Text(
+                    'لا توجد منتجات',
+                    style: GoogleFonts.cairo(fontSize: 16, color: Colors.grey),
+                  ),
+                )
               : Padding(
-                padding: const EdgeInsets.only(
-                  left: 15.0,
-                  right: 15.0,
-                  top: 5.0,
-                ),
-                child: Column(
-                  children: [
-                    // الهيدر الثابت
-                    SafeArea(
-                      bottom: false,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 5),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // زر الرجوع على اليسار
-                            BubbleButton(
-                              icon: Icons.arrow_back,
-                              onTap: () {
-                                Get.back();
-                              },
-                            ),
-                            // النص في الوسط
-                            Text(
-                              partName,
-                              style: GoogleFonts.cairo(
-                                color: AppColors.primaryColor,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.2,
+                  padding: const EdgeInsets.only(
+                    left: 15.0,
+                    right: 15.0,
+                    top: 5.0,
+                  ),
+                  child: Column(
+                    children: [
+                      // الهيدر الثابت
+                      SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // زر الرجوع على اليسار
+                              BubbleButton(
+                                icon: Icons.arrow_back,
+                                onTap: () {
+                                  Get.back();
+                                },
                               ),
-                            ),
-                            // مساحة فارغة للتوازن (شفاف)
-                            const SizedBox(width: 48),
-                          ],
+                              // النص في الوسط
+                              Text(
+                                partName,
+                                style: GoogleFonts.cairo(
+                                  color: AppColors.primaryColor,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              // مساحة فارغة للتوازن (شفاف)
+                              const SizedBox(width: 48),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 10),
+                      const SizedBox(height: 10),
 
-                    // Grid من المنتجات
-                    Expanded(
-                      child: GridView.builder(
-                        padding: const EdgeInsets.only(top: 10),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: 0.60,
-                            ),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          return ProductCard(item: items[index]);
-                        },
+                      // Grid من المنتجات
+                      Expanded(
+                        child: GridView.builder(
+                          padding: const EdgeInsets.only(top: 10),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 0.60,
+                          ),
+                          itemCount: items.length,
+                          itemBuilder: (context, index) {
+                            return ProductCard(item: items[index]);
+                          },
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
         ],
       ),
     );

@@ -100,15 +100,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     child: notifications.isEmpty
                         ? ListView(
                             children: [
-                              SizedBox(height: MediaQuery.of(context).size.height * 0.18),
-                              _EmptyNotificationsState(onRefresh: _notificationService.refreshNotifications),
+                              SizedBox(
+                                  height: MediaQuery.of(context).size.height *
+                                      0.18),
+                              _EmptyNotificationsState(
+                                  onRefresh: _notificationService
+                                      .refreshNotifications),
                             ],
                           )
                         : ListView.separated(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.all(16),
                             itemCount: notifications.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final notification = notifications[index];
                               return _NotificationCard(
@@ -150,7 +155,9 @@ class _NotificationCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: notification.isRead ? Colors.grey.shade200 : accent.withOpacity(0.35),
+              color: notification.isRead
+                  ? Colors.grey.shade200
+                  : accent.withOpacity(0.35),
             ),
           ),
           child: Row(
@@ -177,7 +184,9 @@ class _NotificationCard extends StatelessWidget {
                             notification.title,
                             style: GoogleFonts.cairo(
                               fontSize: 15,
-                              fontWeight: notification.isRead ? FontWeight.w600 : FontWeight.w800,
+                              fontWeight: notification.isRead
+                                  ? FontWeight.w600
+                                  : FontWeight.w800,
                               color: Colors.black87,
                             ),
                           ),
@@ -207,7 +216,8 @@ class _NotificationCard extends StatelessWidget {
                       children: [
                         if (notification.orderId != null)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: accent.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(999),
@@ -363,7 +373,8 @@ class _LoggedOutNotificationsState extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
               ),
               child: Text(
                 'تسجيل الدخول',

@@ -1,17 +1,20 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'firebase_options.dart';
+import 'screens/cart_screen.dart';
+import 'screens/favorites_screen.dart';
+import 'screens/home/home_screen.dart';
+import 'screens/product_screen/Product_Screen.dart';
+import 'screens/profile_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/notification_service.dart';
 import 'utls/constants.dart';
 import 'widget/custom_bottom_nav.dart';
-import 'screens/home/home_screen.dart';
-import 'screens/cart_screen.dart';
-import 'screens/favorites_screen.dart';
-import 'screens/profile_screen.dart';
-import 'screens/product_screen/Product_Screen.dart';
-import 'screens/splash_screen.dart';
 
 class SupabaseConfig {
   static const String supabaseUrl = 'https://ibwawjjqewuikmmnxqgo.supabase.co';
@@ -31,7 +34,6 @@ Future<void> main() async {
     );
   }
 
-  // تهيئة Supabase
   await Supabase.initialize(
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseAnonKey,
@@ -70,12 +72,94 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  static const Duration _tabTransitionDuration = Duration(milliseconds: 420);
+  static const Curve _tabTransitionCurve = Cubic(0.22, 1, 0.36, 1);
+
   int _selectedIndex = 0;
+  int? _previousIndex;
+  Timer? _transitionCleanupTimer;
+
+  final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
+    5,
+    (_) => GlobalKey<NavigatorState>(),
+  );
+
+  late final List<Widget Function()> _tabBuilders = [
+    () => const HomeScreen(),
+    () => const ProductScreen(),
+    () => const CartScreen(),
+    () => const FavoritesScreen(),
+    () => const ProfileScreen(),
+  ];
 
   void _onItemTapped(int index) {
+    if (index == _selectedIndex) return;
+
+    _transitionCleanupTimer?.cancel();
+
     setState(() {
+      _previousIndex = _selectedIndex;
       _selectedIndex = index;
     });
+
+    _transitionCleanupTimer = Timer(_tabTransitionDuration, () {
+      if (!mounted) return;
+      setState(() {
+        _previousIndex = null;
+      });
+    });
+  }
+
+  Widget _buildTabNavigator(int index) {
+    return Navigator(
+      key: _navigatorKeys[index],
+      onGenerateRoute: (settings) => GetPageRoute(
+        settings: settings,
+        page: _tabBuilders[index],
+        transition: Transition.noTransition,
+      ),
+    );
+  }
+
+  Widget _buildAnimatedTab(int index) {
+    final isSelected = index == _selectedIndex;
+    final isPrevious = index == _previousIndex;
+    final shouldShow = isSelected || isPrevious;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !isSelected,
+        child: TickerMode(
+          enabled: shouldShow,
+          child: Offstage(
+            offstage: !shouldShow,
+            child: AnimatedOpacity(
+              opacity: isSelected ? 1 : 0,
+              duration: _tabTransitionDuration,
+              curve: _tabTransitionCurve,
+              child: AnimatedSlide(
+                offset: isSelected ? Offset.zero : const Offset(0, 0.02),
+                duration: _tabTransitionDuration,
+                curve: _tabTransitionCurve,
+                child: AnimatedScale(
+                  scale: isSelected ? 1 : 0.985,
+                  duration: _tabTransitionDuration,
+                  curve: _tabTransitionCurve,
+                  alignment: Alignment.topCenter,
+                  child: _buildTabNavigator(index),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _transitionCleanupTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -84,36 +168,10 @@ class _MainScreenState extends State<MainScreen> {
       extendBody: true,
       body: Stack(
         children: [
-          // صورة الخلفية
           Positioned.fill(
             child: Image.asset('assets/img/main.png', fit: BoxFit.cover),
           ),
-          // المحتوى
-          IndexedStack(
-            index: _selectedIndex,
-            children: [
-              Navigator(
-                onGenerateRoute: (settings) =>
-                    GetPageRoute(page: () => const HomeScreen()),
-              ),
-              Navigator(
-                onGenerateRoute: (settings) =>
-                    GetPageRoute(page: () => const ProductScreen()),
-              ),
-              Navigator(
-                onGenerateRoute: (settings) =>
-                    GetPageRoute(page: () => const CartScreen()),
-              ),
-              Navigator(
-                onGenerateRoute: (settings) =>
-                    GetPageRoute(page: () => const FavoritesScreen()),
-              ),
-              Navigator(
-                onGenerateRoute: (settings) =>
-                    GetPageRoute(page: () => const ProfileScreen()),
-              ),
-            ],
-          ),
+          ...List.generate(_tabBuilders.length, _buildAnimatedTab),
         ],
       ),
       bottomNavigationBar: CustomBottomNav(

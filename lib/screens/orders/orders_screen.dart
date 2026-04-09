@@ -241,13 +241,11 @@ class _OrdersScreenState extends State<OrdersScreen>
                   _bounceController.value,
                 );
 
-                final scale = _isDragging
-                    ? 1.0
-                    : (0.92 + (elasticCurve * 0.08));
+                final scale =
+                    _isDragging ? 1.0 : (0.92 + (elasticCurve * 0.08));
 
-                final targetWidth = _isDragging
-                    ? itemWidth * 0.90
-                    : itemWidth * 0.84;
+                final targetWidth =
+                    _isDragging ? itemWidth * 0.90 : itemWidth * 0.84;
                 final targetHeight = _isDragging ? 53.0 : 44.0;
 
                 return Transform.scale(

@@ -4,6 +4,7 @@ import '../../utls/constants.dart';
 import '../../models/customer_location_model.dart';
 import '../../services/location_service.dart';
 import '../../services/auth_service.dart';
+import '../../widget/loading_animation.dart';
 import '../location_screen.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -84,11 +85,126 @@ class _SelectLocationBottomSheetState extends State<SelectLocationBottomSheet> {
     );
   }
 
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: GoogleFonts.cairo(),
+          textAlign: TextAlign.center,
+        ),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  // حذف موقع
+  Future<void> _deleteLocation(CustomerLocation location) async {
+    // عرض تأكيد الحذف
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'حذف الموقع',
+          style: GoogleFonts.cairo(
+            fontWeight: FontWeight.bold,
+            color: Colors.red,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.delete_forever,
+              size: 64,
+              color: Colors.red[300],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'هل أنت متأكد من حذف موقع "${location.name}"؟',
+              style: GoogleFonts.cairo(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            if (location.isDefault) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.orange[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'هذا هو الموقع الرئيسي',
+                        style: GoogleFonts.cairo(
+                          fontSize: 13,
+                          color: Colors.orange[800],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'إلغاء',
+              style: GoogleFonts.cairo(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'حذف',
+              style: GoogleFonts.cairo(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      // تنفيذ الحذف
+      final result = await LocationService.deleteLocation(
+        locationId: location.id!,
+        customerId: _customerId!,
+      );
+
+      if (result['success'] == true) {
+        _showSuccess(result['message'] ?? 'تم حذف الموقع بنجاح');
+        // إعادة تحميل المواقع
+        _loadLocations();
+      } else {
+        _showError(result['message'] ?? 'فشل في حذف الموقع');
+      }
+    }
+  }
+
   // إضافة موقع جديد
   Future<void> _addNewLocation() async {
     if (_customerId == null) return;
 
     // الانتقال لشاشة الخريطة لاختيار الموقع
+    // LocationScreen يقوم بحفظ الموقع مباشرة في قاعدة البيانات
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
@@ -97,8 +213,11 @@ class _SelectLocationBottomSheetState extends State<SelectLocationBottomSheet> {
     );
 
     if (result != null && mounted) {
-      // حفظ الموقع الجديد
-      final newLocation = await LocationService.addLocation(
+      // LocationScreen قامت بحفظ الموقع بالفعل في قاعدة البيانات
+      // لذلك نقوم فقط بإنشاء CustomerLocation من البيانات المرجعة
+      final newLocation = CustomerLocation(
+        id: result['id'] as int,
+        shopId: LocationService.DEFAULT_SHOP_ID,
         customerId: _customerId!,
         name: result['name'] as String,
         latitude: result['latitude'] as double,
@@ -106,15 +225,13 @@ class _SelectLocationBottomSheetState extends State<SelectLocationBottomSheet> {
         locationName: result['locationName'] as String?,
         fullAddress: result['fullAddress'] as String?,
         notes: result['notes'] as String?,
-        setAsDefault: _locations.isEmpty, // إذا كان أول موقع، اجعله رئيسي
+        isDefault: _locations.isEmpty, // إذا كان أول موقع
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
 
-      if (newLocation != null && mounted) {
-        // إرجاع الموقع الجديد
-        Navigator.pop(context, newLocation);
-      } else {
-        _showError('فشل في حفظ الموقع');
-      }
+      // إرجاع الموقع الجديد
+      Navigator.pop(context, newLocation);
     }
   }
 
@@ -170,7 +287,7 @@ class _SelectLocationBottomSheetState extends State<SelectLocationBottomSheet> {
             if (_isLoading)
               const Padding(
                 padding: EdgeInsets.all(40),
-                child: CircularProgressIndicator(),
+                child: CenteredLoading(),
               )
             else if (_locations.isEmpty)
               Padding(
@@ -316,18 +433,38 @@ class _SelectLocationBottomSheetState extends State<SelectLocationBottomSheet> {
                               ),
                             ),
 
-                            // علامة الاختيار
-                            if (isSelected)
-                              Icon(
-                                Icons.check_circle,
-                                color: AppColors.primaryColor,
-                                size: 28,
-                              )
-                            else
-                              Icon(
-                                Icons.chevron_left,
-                                color: Colors.grey[400],
-                              ),
+                            // علامة الاختيار وزر الحذف
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // زر الحذف
+                                IconButton(
+                                  onPressed: () => _deleteLocation(location),
+                                  icon: Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red[400],
+                                    size: 22,
+                                  ),
+                                  tooltip: 'حذف الموقع',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle,
+                                    color: AppColors.primaryColor,
+                                    size: 28,
+                                  )
+                                else
+                                  Icon(
+                                    Icons.chevron_left,
+                                    color: Colors.grey[400],
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ),

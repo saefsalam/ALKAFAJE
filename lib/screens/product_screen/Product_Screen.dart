@@ -5,6 +5,7 @@ import '../../utls/constants.dart';
 import '../../widget/bubble_button.dart';
 import '../../widget/custom_search_bar.dart';
 import '../../widget/Mytext.dart';
+import '../../widget/loading_animation.dart';
 import '../product_detail_screen.dart';
 import '../../models/product_model.dart';
 import '../../main.dart'; // استيراد SupabaseConfig من main.dart
@@ -156,7 +157,8 @@ class _ProductScreenState extends State<ProductScreen> {
         if (cat['icon'] != null && (cat['icon'] as String).isNotEmpty) {
           final iconPath = cat['icon'] as String;
           // إذا كان المسار URL كامل، استخدمه كما هو
-          if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {
+          if (iconPath.startsWith('http://') ||
+              iconPath.startsWith('https://')) {
             iconUrl = iconPath;
           } else if (iconPath.startsWith('assets/')) {
             // إذا كان مسار محلي (assets)، اتركه فارغ لعرض الأيقونة الافتراضية
@@ -166,7 +168,7 @@ class _ProductScreenState extends State<ProductScreen> {
             iconUrl = _supabase.storage.from('icon').getPublicUrl(iconPath);
           }
         }
-        
+
         return Category(
           id: cat['id'], // ✅ اسم العمود الصحيح
           shopId: cat['shop_id'],
@@ -188,7 +190,9 @@ class _ProductScreenState extends State<ProductScreen> {
           .from('items') // ✅ اسم الجدول الصحيح
           .select('''
             *,
-            item_images(*) 
+            item_images(*),
+            item_colors(*),
+            item_sizes(*)
           ''') // ✅ اسم الجدول الصحيح للصور
           .eq('shop_id', SupabaseConfig.shopId)
           .eq('is_active', true)
@@ -197,58 +201,8 @@ class _ProductScreenState extends State<ProductScreen> {
           .range(0, _pageSize - 1); // تحميل أول 20 منتج
 
       // تحويل البيانات إلى قائمة Item
-      final items = (itemsData as List).map((product) {
-        // معالجة الصور
-        final images = (product['item_images'] as List?)?.map((img) {
-              // ✅ اسم الجدول الصحيح
-              return ItemImage(
-                id: img['id'] ?? 0, // ✅ اسم العمود الصحيح
-                itemId: img['item_id'] ?? 0, // ✅ اسم العمود الصحيح
-                imagePath: img['image_path'] ??
-                    'assets/img/main.png', // ✅ اسم العمود الصحيح
-                sortOrder: img['sort_order'] ?? 1,
-                isPrimary: img['is_primary'] ?? false,
-                createdAt: img['created_at'] != null
-                    ? DateTime.parse(img['created_at'])
-                    : DateTime.now(),
-              );
-            }).toList() ??
-            [];
-
-        // إذا لم توجد صور، أضف صورة افتراضية
-        if (images.isEmpty) {
-          images.add(
-            ItemImage(
-              id: 0,
-              itemId: product['id'] ?? 0, // ✅ اسم العمود الصحيح
-              imagePath: 'assets/img/main.png',
-              sortOrder: 1,
-              isPrimary: true,
-            ),
-          );
-        }
-
-        return Item(
-          id: product['id'], // ✅ اسم العمود الصحيح
-          shopId: product['shop_id'],
-          title: product['title'], // ✅ اسم العمود الصحيح
-          description: product['description'],
-          price: (product['price'] as num).toDouble(),
-          discountPrice: product['discount_price'] != null
-              ? (product['discount_price'] as num).toDouble()
-              : null,
-          discountPercent: (product['discount_percent'] as num?)?.toInt(),
-          categoryId: product['category_id'],
-          isActive: product['is_active'] ?? true,
-          isDeleted: product['is_deleted'] ?? false,
-          createdAt: product['created_at'] != null
-              ? DateTime.parse(product['created_at'])
-              : DateTime.now(),
-          updatedAt: product['updated_at'] != null
-              ? DateTime.parse(product['updated_at'])
-              : DateTime.now(),
-          images: images,
-        );
+      final items = (itemsData as List).map<Item>((product) {
+        return Item.fromJson(Map<String, dynamic>.from(product));
       }).toList();
 
       // التحقق إذا كان هناك المزيد من المنتجات
@@ -263,7 +217,7 @@ class _ProductScreenState extends State<ProductScreen> {
         _filteredItems = items;
         _isLoading = false;
       });
-      
+
       // تحميل صور التصنيفات مسبقاً (precache)
       _precacheCategoryImages(categories);
     } catch (e) {
@@ -276,9 +230,10 @@ class _ProductScreenState extends State<ProductScreen> {
   // تحميل صور التصنيفات مسبقاً لتجنب التأخير
   void _precacheCategoryImages(List<Category> categories) {
     for (final category in categories) {
-      if (category.icon != null && 
+      if (category.icon != null &&
           category.icon!.isNotEmpty &&
-          (category.icon!.startsWith('http://') || category.icon!.startsWith('https://'))) {
+          (category.icon!.startsWith('http://') ||
+              category.icon!.startsWith('https://'))) {
         precacheImage(NetworkImage(category.icon!), context);
       }
     }
@@ -300,7 +255,9 @@ class _ProductScreenState extends State<ProductScreen> {
           .from('items')
           .select('''
             *,
-            item_images(*) 
+            item_images(*),
+            item_colors(*),
+            item_sizes(*)
           ''')
           .eq('shop_id', SupabaseConfig.shopId)
           .eq('is_active', true)
@@ -308,54 +265,8 @@ class _ProductScreenState extends State<ProductScreen> {
           .order('created_at', ascending: false)
           .range(startIndex, endIndex);
 
-      final newItems = (itemsData as List).map((product) {
-        final images = (product['item_images'] as List?)?.map((img) {
-              return ItemImage(
-                id: img['id'] ?? 0,
-                itemId: img['item_id'] ?? 0,
-                imagePath: img['image_path'] ?? 'assets/img/main.png',
-                sortOrder: img['sort_order'] ?? 1,
-                isPrimary: img['is_primary'] ?? false,
-                createdAt: img['created_at'] != null
-                    ? DateTime.parse(img['created_at'])
-                    : DateTime.now(),
-              );
-            }).toList() ??
-            [];
-
-        if (images.isEmpty) {
-          images.add(
-            ItemImage(
-              id: 0,
-              itemId: product['id'] ?? 0,
-              imagePath: 'assets/img/main.png',
-              sortOrder: 1,
-              isPrimary: true,
-            ),
-          );
-        }
-
-        return Item(
-          id: product['id'],
-          shopId: product['shop_id'],
-          title: product['title'],
-          description: product['description'],
-          price: (product['price'] as num).toDouble(),
-          discountPrice: product['discount_price'] != null
-              ? (product['discount_price'] as num).toDouble()
-              : null,
-          discountPercent: (product['discount_percent'] as num?)?.toInt(),
-          categoryId: product['category_id'],
-          isActive: product['is_active'] ?? true,
-          isDeleted: product['is_deleted'] ?? false,
-          createdAt: product['created_at'] != null
-              ? DateTime.parse(product['created_at'])
-              : DateTime.now(),
-          updatedAt: product['updated_at'] != null
-              ? DateTime.parse(product['updated_at'])
-              : DateTime.now(),
-          images: images,
-        );
+      final newItems = (itemsData as List).map<Item>((product) {
+        return Item.fromJson(Map<String, dynamic>.from(product));
       }).toList();
 
       if (newItems.length < _pageSize) {
@@ -535,8 +446,8 @@ class _ProductScreenState extends State<ProductScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: _isLoading && _categories.isEmpty
-          ? Center(
-              child: CircularProgressIndicator(color: AppColors.primaryColor),
+          ? const Center(
+              child: LoadingAnimation(size: 200),
             )
           : Padding(
               padding: const EdgeInsets.only(
@@ -613,7 +524,8 @@ class _ProductScreenState extends State<ProductScreen> {
                                         Stack(
                                           children: [
                                             AnimatedContainer(
-                                              duration: const Duration(milliseconds: 150),
+                                              duration: const Duration(
+                                                  milliseconds: 150),
                                               width: 72,
                                               height: 72,
                                               decoration: BoxDecoration(
@@ -634,7 +546,8 @@ class _ProductScreenState extends State<ProductScreen> {
                                                         ? AppColors.primaryColor
                                                         : AppColors.primaryColor
                                                             .withOpacity(0.3),
-                                                    blurRadius: isSelected ? 12 : 6,
+                                                    blurRadius:
+                                                        isSelected ? 12 : 6,
                                                     offset: const Offset(0, 1),
                                                   ),
                                                 ],
@@ -662,14 +575,16 @@ class _ProductScreenState extends State<ProductScreen> {
                                                     color: Colors.white,
                                                     boxShadow: [
                                                       BoxShadow(
-                                                        color: Colors.black.withOpacity(0.2),
+                                                        color: Colors.black
+                                                            .withOpacity(0.2),
                                                         blurRadius: 4,
                                                       ),
                                                     ],
                                                   ),
                                                   child: Icon(
                                                     Icons.check,
-                                                    color: AppColors.primaryColor,
+                                                    color:
+                                                        AppColors.primaryColor,
                                                     size: 14,
                                                   ),
                                                 ),
@@ -694,7 +609,8 @@ class _ProductScreenState extends State<ProductScreen> {
                                       Stack(
                                         children: [
                                           AnimatedContainer(
-                                            duration: const Duration(milliseconds: 150),
+                                            duration: const Duration(
+                                                milliseconds: 150),
                                             width: 72,
                                             height: 72,
                                             decoration: BoxDecoration(
@@ -712,7 +628,8 @@ class _ProductScreenState extends State<ProductScreen> {
                                                       ? AppColors.primaryColor
                                                       : AppColors.primaryColor
                                                           .withOpacity(0.3),
-                                                  blurRadius: isSelected ? 12 : 6,
+                                                  blurRadius:
+                                                      isSelected ? 12 : 6,
                                                   offset: const Offset(0, 1),
                                                 ),
                                               ],
@@ -722,11 +639,14 @@ class _ProductScreenState extends State<ProductScreen> {
                                                 children: [
                                                   Positioned.fill(
                                                     child: Padding(
-                                                      padding: const EdgeInsets.all(
+                                                      padding:
+                                                          const EdgeInsets.all(
                                                         1.5,
                                                       ),
                                                       child: ClipOval(
-                                                        child: _buildCategoryImage(category.icon),
+                                                        child:
+                                                            _buildCategoryImage(
+                                                                category.icon),
                                                       ),
                                                     ),
                                                   ),
@@ -741,31 +661,40 @@ class _ProductScreenState extends State<ProductScreen> {
                                                         top: 4,
                                                       ),
                                                       decoration: BoxDecoration(
-                                                        gradient: LinearGradient(
+                                                        gradient:
+                                                            LinearGradient(
                                                           begin: Alignment
                                                               .bottomCenter,
-                                                          end: Alignment.topCenter,
+                                                          end: Alignment
+                                                              .topCenter,
                                                           stops: const [
                                                             0.0,
                                                             0.5,
                                                             1.0,
                                                           ],
                                                           colors: [
-                                                            AppColors.primaryColor
+                                                            AppColors
+                                                                .primaryColor
                                                                 .withOpacity(
                                                               0.95,
                                                             ),
-                                                            AppColors.primaryColor
-                                                                .withOpacity(0.7),
-                                                            AppColors.primaryColor
-                                                                .withOpacity(0.0),
+                                                            AppColors
+                                                                .primaryColor
+                                                                .withOpacity(
+                                                                    0.7),
+                                                            AppColors
+                                                                .primaryColor
+                                                                .withOpacity(
+                                                                    0.0),
                                                           ],
                                                         ),
                                                       ),
                                                       child: Text(
                                                         category.name,
-                                                        textAlign: TextAlign.center,
-                                                        style: GoogleFonts.cairo(
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style:
+                                                            GoogleFonts.cairo(
                                                           color: Colors.white,
                                                           fontSize: 9,
                                                           fontWeight:
@@ -791,7 +720,8 @@ class _ProductScreenState extends State<ProductScreen> {
                                                   color: Colors.white,
                                                   boxShadow: [
                                                     BoxShadow(
-                                                      color: Colors.black.withOpacity(0.2),
+                                                      color: Colors.black
+                                                          .withOpacity(0.2),
                                                       blurRadius: 4,
                                                     ),
                                                   ],
@@ -968,15 +898,12 @@ class _ProductScreenState extends State<ProductScreen> {
                                 ),
                                 // مؤشر تحميل المزيد
                                 if (_isLoadingMore)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(
                                       vertical: 20,
                                     ),
                                     child: Center(
-                                      child: CircularProgressIndicator(
-                                        color: AppColors.primaryColor,
-                                        strokeWidth: 2,
-                                      ),
+                                      child: LoadingAnimation(size: 80),
                                     ),
                                   ),
                                 // رسالة نهاية المنتجات

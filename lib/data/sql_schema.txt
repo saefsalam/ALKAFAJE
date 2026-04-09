@@ -19,9 +19,17 @@ CREATE TABLE public.cart_items (
   quantity integer NOT NULL DEFAULT 1 CHECK (quantity > 0),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  selection_key text NOT NULL DEFAULT 'c:0|s:0'::text,
+  selected_color_id bigint,
+  selected_color_name text,
+  selected_color_hex text CHECK (selected_color_hex IS NULL OR selected_color_hex ~ '^#[0-9A-Fa-f]{6}$'::text),
+  selected_size_id bigint,
+  selected_size_name text,
   CONSTRAINT cart_items_pkey PRIMARY KEY (id),
   CONSTRAINT cart_items_cart_id_fkey FOREIGN KEY (cart_id) REFERENCES public.carts(id),
-  CONSTRAINT cart_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+  CONSTRAINT cart_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id),
+  CONSTRAINT cart_items_selected_color_id_fkey FOREIGN KEY (selected_color_id) REFERENCES public.item_colors(id),
+  CONSTRAINT cart_items_selected_size_id_fkey FOREIGN KEY (selected_size_id) REFERENCES public.item_sizes(id)
 );
 CREATE TABLE public.carts (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -89,6 +97,24 @@ CREATE TABLE public.delivery_zones (
   CONSTRAINT delivery_zones_pkey PRIMARY KEY (id),
   CONSTRAINT delivery_zones_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
 );
+CREATE TABLE public.discount_codes (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  shop_id uuid NOT NULL,
+  code text NOT NULL,
+  discount_type text NOT NULL CHECK (discount_type = ANY (ARRAY['percent'::text, 'amount'::text])),
+  discount_percent integer,
+  discount_amount numeric,
+  min_purchase_amount numeric NOT NULL DEFAULT 0 CHECK (min_purchase_amount >= 0::numeric),
+  max_discount_amount numeric CHECK (max_discount_amount IS NULL OR max_discount_amount > 0::numeric),
+  limit_count integer CHECK (limit_count IS NULL OR limit_count > 0),
+  used_count integer NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+  expiry_date date NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT discount_codes_pkey PRIMARY KEY (id),
+  CONSTRAINT discount_codes_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
+);
 CREATE TABLE public.favorites (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   shop_id uuid NOT NULL,
@@ -113,6 +139,18 @@ CREATE TABLE public.fcm_tokens (
   CONSTRAINT fcm_tokens_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
   CONSTRAINT fcm_tokens_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id)
 );
+CREATE TABLE public.item_colors (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  item_id bigint NOT NULL,
+  name text NOT NULL,
+  hex_code text CHECK (hex_code IS NULL OR hex_code ~ '^#[0-9A-Fa-f]{6}$'::text),
+  sort_order smallint NOT NULL DEFAULT 1 CHECK (sort_order >= 1),
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT item_colors_pkey PRIMARY KEY (id),
+  CONSTRAINT item_colors_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+);
 CREATE TABLE public.item_images (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   item_id bigint NOT NULL,
@@ -123,6 +161,17 @@ CREATE TABLE public.item_images (
   CONSTRAINT item_images_pkey PRIMARY KEY (id),
   CONSTRAINT item_images_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
 );
+CREATE TABLE public.item_sizes (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  item_id bigint NOT NULL,
+  name text NOT NULL,
+  sort_order smallint NOT NULL DEFAULT 1 CHECK (sort_order >= 1),
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT item_sizes_pkey PRIMARY KEY (id),
+  CONSTRAINT item_sizes_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
+);
 CREATE TABLE public.items (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   shop_id uuid NOT NULL,
@@ -130,12 +179,16 @@ CREATE TABLE public.items (
   title text NOT NULL,
   description text,
   price numeric NOT NULL DEFAULT 0 CHECK (price >= 0::numeric),
-  discount_percent smallint NOT NULL DEFAULT 0 CHECK (discount_percent >= 0 AND discount_percent <= 95),
-  discount_price numeric GENERATED ALWAYS AS (CASE WHEN discount_percent > 0 THEN round((price * ((100 - discount_percent)::numeric / 100)), 2) ELSE NULL::numeric END) STORED,
   is_active boolean NOT NULL DEFAULT true,
   is_deleted boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  discount_percent smallint NOT NULL DEFAULT 0 CHECK (discount_percent >= 0 AND discount_percent <= 95),
+  discount_price numeric DEFAULT 
+CASE
+    WHEN (discount_percent > 0) THEN round((price * (((100 - discount_percent))::numeric / (100)::numeric)), 2)
+    ELSE NULL::numeric
+END,
   CONSTRAINT items_pkey PRIMARY KEY (id),
   CONSTRAINT items_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
   CONSTRAINT items_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
@@ -153,6 +206,7 @@ CREATE TABLE public.location (
   full_address text,
   notes text,
   is_default boolean DEFAULT false,
+  is_deleted boolean DEFAULT false,
   CONSTRAINT location_pkey PRIMARY KEY (id),
   CONSTRAINT location_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
   CONSTRAINT location_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id)
@@ -162,12 +216,17 @@ CREATE TABLE public.order_items (
   order_id bigint NOT NULL,
   item_id bigint NOT NULL,
   quantity integer NOT NULL CHECK (quantity > 0),
-  original_unit_price numeric,
-  discount_percent_snapshot smallint NOT NULL DEFAULT 0 CHECK (discount_percent_snapshot >= 0 AND discount_percent_snapshot <= 95),
   unit_price numeric NOT NULL,
   line_total numeric NOT NULL,
   title_snapshot text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  original_unit_price numeric,
+  discount_percent_snapshot smallint NOT NULL DEFAULT 0 CHECK (discount_percent_snapshot >= 0 AND discount_percent_snapshot <= 95),
+  selected_color_id bigint,
+  selected_color_name text,
+  selected_color_hex text CHECK (selected_color_hex IS NULL OR selected_color_hex ~ '^#[0-9A-Fa-f]{6}$'::text),
+  selected_size_id bigint,
+  selected_size_name text,
   CONSTRAINT order_items_pkey PRIMARY KEY (id),
   CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
   CONSTRAINT order_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.items(id)
@@ -197,10 +256,14 @@ CREATE TABLE public.orders (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   assigned_location_id bigint,
+  discount_code_id bigint,
+  discount_code_snapshot text,
+  discount_amount numeric NOT NULL DEFAULT 0,
   CONSTRAINT orders_pkey PRIMARY KEY (id),
   CONSTRAINT orders_shop_id_fkey FOREIGN KEY (shop_id) REFERENCES public.shops(id),
   CONSTRAINT orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id),
-  CONSTRAINT orders_assigned_location_id_fkey FOREIGN KEY (assigned_location_id) REFERENCES public.location(id)
+  CONSTRAINT orders_assigned_location_id_fkey FOREIGN KEY (assigned_location_id) REFERENCES public.location(id),
+  CONSTRAINT orders_discount_code_id_fkey FOREIGN KEY (discount_code_id) REFERENCES public.discount_codes(id)
 );
 CREATE TABLE public.part_items (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,

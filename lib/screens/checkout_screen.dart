@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:get/get.dart';
 import '../utls/constants.dart';
 import '../services/order_service.dart';
 import '../services/auth_service.dart';
+import '../services/discount_code_service.dart';
 import '../services/location_service.dart';
 import '../models/customer_location_model.dart';
+import '../models/discount_code_model.dart';
+import '../models/product_model.dart';
 import '../widget/bubble_button.dart';
+import '../widget/loading_animation.dart';
+import '../main.dart';
 import 'orders/order_detail_screen.dart';
 import 'addresses/select_location_bottom_sheet.dart';
 
@@ -16,11 +22,13 @@ import 'addresses/select_location_bottom_sheet.dart';
 class CheckoutScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
   final double subtotal;
+  final String? initialPromoCode;
 
   const CheckoutScreen({
     super.key,
     required this.cartItems,
     required this.subtotal,
+    this.initialPromoCode,
   });
 
   @override
@@ -55,20 +63,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   CustomerLocation? _selectedLocation;
   bool _isLoadingZones = true;
   bool _isSubmitting = false;
+  bool _isApplyingPromoCode = false;
 
   final _noteController = TextEditingController();
   final _addressController = TextEditingController();
+  final _promoCodeController = TextEditingController();
+  DiscountCodeCalculation? _discountCalculation;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    final String initialPromoCode = widget.initialPromoCode?.trim() ?? '';
+    if (initialPromoCode.isNotEmpty) {
+      _promoCodeController.text = initialPromoCode;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _applyPromoCode(showSuccessMessage: false);
+      });
+    }
   }
 
   @override
   void dispose() {
     _noteController.dispose();
     _addressController.dispose();
+    _promoCodeController.dispose();
     super.dispose();
   }
 
@@ -112,7 +131,56 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // الحسابات
   // ═══════════════════════════════════════════════════════════════════════════
 
-  double get _total => widget.subtotal;
+  double get _discountAmount => _discountCalculation?.discountAmount ?? 0;
+
+  double get _total => _discountCalculation?.finalTotal ?? widget.subtotal;
+
+  Future<void> _applyPromoCode({bool showSuccessMessage = true}) async {
+    final String rawCode = _promoCodeController.text.trim();
+    if (rawCode.isEmpty) {
+      _showMessage('أدخل البرومو كود أولًا', isError: true);
+      return;
+    }
+
+    setState(() => _isApplyingPromoCode = true);
+    final DiscountCodeCalculation calculation =
+        await DiscountCodeService.validateCode(
+      rawCode: rawCode,
+      subtotal: widget.subtotal,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isApplyingPromoCode = false;
+      _discountCalculation = calculation.isApplicable ? calculation : null;
+    });
+
+    if (calculation.isApplicable) {
+      _promoCodeController.text =
+          calculation.discountCode?.normalizedCode ?? rawCode.toUpperCase();
+      if (showSuccessMessage) {
+        _showMessage(
+          'تم تطبيق البرومو كود وخصم ${calculation.discountAmount.toStringAsFixed(0)} د.ع',
+        );
+      }
+      return;
+    }
+
+    _showMessage(
+      calculation.message ?? 'تعذر تطبيق البرومو كود',
+      isError: true,
+    );
+  }
+
+  void _removePromoCode() {
+    setState(() {
+      _discountCalculation = null;
+      _promoCodeController.clear();
+    });
+    _showMessage('تم حذف البرومو كود من الطلب');
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // إنشاء الطلب
@@ -143,6 +211,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 16),
             _buildSummaryRow(
                 'المنتجات', '${widget.subtotal.toStringAsFixed(0)} د.ع'),
+            if (_discountAmount > 0) ...[
+              const Divider(height: 16),
+              _buildSummaryRow(
+                'خصم البرومو',
+                '-${_discountAmount.toStringAsFixed(0)} د.ع',
+              ),
+            ],
             const Divider(height: 16),
             _buildSummaryRow(
               'الإجمالي',
@@ -181,13 +256,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     setState(() => _isSubmitting = true);
 
-    final result = await OrderService.createOrder(
+    final result = await OrderService.createOrderWithPromo(
       note: _noteController.text.trim().isEmpty
           ? null
           : _noteController.text.trim(),
       address: _addressController.text.trim().isEmpty
           ? null
           : _addressController.text.trim(),
+      discountCode: _discountCalculation?.discountCode,
       locationId: _selectedLocation?.id, // إرسال location_id مع الطلب
     );
 
@@ -196,7 +272,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (result['success'] == true) {
       if (mounted) {
         // عرض شاشة النجاح
-        _showOrderSuccessDialog(result['orderId'] as int, _total);
+        _showOrderSuccessDialog(
+          result['orderId'] as int,
+          (result['total'] as num?)?.toDouble() ?? _total,
+        );
       }
     } else {
       _showMessage(result['message'] ?? 'فشل في إنشاء الطلب', isError: true);
@@ -299,7 +378,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context); // إغلاق الـ dialog
-              Navigator.of(context, rootNavigator: true).pop(true); // الرجوع للسلة مع إشارة النجاح
+              // الرجوع للشاشة الرئيسية
+              Get.offAll(() => const MainScreen());
             },
             child: Text(
               'العودة للتسوق',
@@ -371,7 +451,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               bottom: false, // السماح للمحتوى بالظهور خلف Bottom Nav
               child: _isLoadingZones
                   ? const Center(
-                      child: CircularProgressIndicator(color: AppColors.primaryColor),
+                      child: LoadingAnimation(size: 200),
                     )
                   : Padding(
                       padding: const EdgeInsets.only(
@@ -414,30 +494,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   // ─── ملخص المنتجات ───
-                                  _buildSectionTitle('المنتجات (${widget.cartItems.length})',
+                                  _buildSectionTitle(
+                                      'المنتجات (${widget.cartItems.length})',
                                       Icons.shopping_bag_outlined),
                                   const SizedBox(height: 8),
                                   _buildProductsSummary(),
 
                                   const SizedBox(height: 20),
 
+                                  _buildSectionTitle('البرومو كود',
+                                      Icons.local_offer_outlined),
+                                  const SizedBox(height: 8),
+                                  _buildPromoCodeCard(),
+
+                                  const SizedBox(height: 20),
+
                                   // ─── موقع التوصيل ───
-                                  _buildSectionTitle(
-                                      'موقع التوصيل', Icons.my_location_outlined),
+                                  _buildSectionTitle('موقع التوصيل',
+                                      Icons.my_location_outlined),
                                   const SizedBox(height: 8),
                                   _buildLocationSelector(),
 
                                   const SizedBox(height: 20),
 
                                   // ─── العنوان التفصيلي ───
-                                  _buildSectionTitle('العنوان التفصيلي', Icons.home_outlined),
+                                  _buildSectionTitle(
+                                      'العنوان التفصيلي', Icons.home_outlined),
                                   const SizedBox(height: 8),
                                   _buildAddressField(),
 
                                   const SizedBox(height: 20),
 
                                   // ─── ملاحظات ───
-                                  _buildSectionTitle('ملاحظات (اختياري)', Icons.note_outlined),
+                                  _buildSectionTitle(
+                                      'ملاحظات (اختياري)', Icons.note_outlined),
                                   const SizedBox(height: 8),
                                   _buildNoteField(),
 
@@ -505,6 +595,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             if (item == null) return const SizedBox.shrink();
 
             final title = item['title'] ?? 'منتج';
+            final ProductOptionSelection selection =
+                ProductOptionSelection.fromJson(cartItem);
             final quantity = cartItem['quantity'] as int;
             final unitPrice = _resolveEffectivePrice(item);
             final lineTotal = unitPrice * quantity;
@@ -534,12 +626,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   const SizedBox(width: 10),
                   // اسم المنتج
                   Expanded(
-                    child: Text(
-                      title,
-                      style: GoogleFonts.cairo(
-                          fontSize: 14, color: Colors.black87),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.cairo(
+                              fontSize: 14, color: Colors.black87),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (selection.label.isNotEmpty)
+                          Text(
+                            selection.label,
+                            style: GoogleFonts.cairo(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -562,6 +668,169 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   // ─── حقل العنوان ───────────────────────────────────────────────────────
+
+  Widget _buildPromoCodeCard() {
+    final bool hasAppliedPromo = _discountCalculation?.isApplicable == true &&
+        _discountCalculation?.discountCode != null;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _promoCodeController,
+                  textCapitalization: TextCapitalization.characters,
+                  onChanged: (value) {
+                    final String? appliedCode =
+                        _discountCalculation?.discountCode?.normalizedCode;
+                    if (appliedCode != null &&
+                        DiscountCodeService.normalizeCode(value) !=
+                            appliedCode) {
+                      setState(() => _discountCalculation = null);
+                    }
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'أدخل رمز الخصم',
+                    hintStyle: GoogleFonts.cairo(
+                      color: Colors.grey[500],
+                      fontSize: 13,
+                    ),
+                    prefixIcon: const Icon(Icons.local_offer_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: AppColors.primaryColor,
+                        width: 1.4,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                  ),
+                  style: GoogleFonts.cairo(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isApplyingPromoCode ? null : _applyPromoCode,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _isApplyingPromoCode
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          hasAppliedPromo ? 'إعادة التحقق' : 'تطبيق',
+                          style: GoogleFonts.cairo(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+          if (hasAppliedPromo) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_circle,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _discountCalculation!.discountCode!.normalizedCode,
+                          style: GoogleFonts.cairo(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'تم خصم ${_discountAmount.toStringAsFixed(0)} د.ع من الطلب',
+                          style: GoogleFonts.cairo(
+                            fontSize: 12,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _removePromoCode,
+                    child: Text(
+                      'حذف',
+                      style: GoogleFonts.cairo(
+                        color: Colors.red.shade700,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _buildAddressField() {
     return Container(
@@ -651,6 +920,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             'المنتجات',
             '${widget.subtotal.toStringAsFixed(0)} د.ع',
           ),
+          if (_discountAmount > 0) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Divider(),
+            ),
+            _buildSummaryRow(
+              'خصم البرومو',
+              '-${_discountAmount.toStringAsFixed(0)} د.ع',
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Divider(),
@@ -710,8 +989,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
         child: _isSubmitting
             ? const SizedBox(
-                height: 24,
-                width: 24,
+                height: 30,
+                width: 30,
                 child: CircularProgressIndicator(
                   color: Colors.white,
                   strokeWidth: 2.5,

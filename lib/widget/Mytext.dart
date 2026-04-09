@@ -6,7 +6,7 @@ class MyText extends StatelessWidget {
   const MyText({super.key, required this.text, this.fontSize = 22});
   final String text;
   final double fontSize;
-  
+
   @override
   Widget build(BuildContext context) {
     return ShaderMask(

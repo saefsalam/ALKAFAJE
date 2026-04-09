@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/cart_update_service.dart';
 import '../utls/constants.dart';
 import '../widget/Mytext.dart';
+import '../widget/loading_animation.dart';
 import 'addresses/select_location_bottom_sheet.dart';
 import 'auth_screen.dart';
 import 'notifications_screen.dart';
@@ -83,7 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (success && mounted) {
         // إشعار بتغيير السلة (التبديل من السلة في قاعدة البيانات إلى السلة المحلية)
         CartUpdateService.notifyCartChanged();
-        
+
         setState(() {
           _customerInfo = null;
         });
@@ -131,7 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _showEditProfileDialog() async {
     final phone = _customerInfo?['phone'] ?? '';
     final customerId = _customerInfo?['id'];
-    
+
     if (phone.isEmpty || customerId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -152,7 +153,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // المرحلة 2: التحقق من OTP
     final verified = await _showOtpVerificationDialog(phone, customerId);
-    
+
     // إذا تم التحقق بنجاح، افتح دايلوج التعديل
     if (verified == true && mounted) {
       _showNameEditDialog();
@@ -169,18 +170,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (result['success'] == true) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'تم إرسال رمز التحقق إلى WhatsApp',
-                style: GoogleFonts.cairo(),
-                textAlign: TextAlign.center,
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
         return true;
       } else {
         if (mounted) {
@@ -217,7 +206,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // عرض دايلوج التحقق من OTP
   Future<bool?> _showOtpVerificationDialog(String phone, int customerId) async {
     final TextEditingController otpController = TextEditingController();
-    
+
     return await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -272,7 +261,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.primaryColor, width: 2),
+                  borderSide:
+                      BorderSide(color: AppColors.primaryColor, width: 2),
                 ),
               ),
             ),
@@ -312,14 +302,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
                 return;
               }
-              
+
               // التحقق من OTP
               final result = await AuthService.verifyOtp(
                 phone: phone,
                 otp: otpController.text,
                 customerId: customerId,
               );
-              
+
               if (result['success'] == true) {
                 Navigator.pop(context, true);
               } else {
@@ -372,7 +362,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: InputDecoration(
             hintText: 'الاسم الكامل',
             hintStyle: GoogleFonts.cairo(color: Colors.grey),
-            prefixIcon: Icon(Icons.person_outline, color: AppColors.primaryColor),
+            prefixIcon:
+                Icon(Icons.person_outline, color: AppColors.primaryColor),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -420,7 +411,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirmed == true && mounted) {
       final newName = nameController.text.trim();
       final success = await AuthService.updateCustomerName(newName);
-      
+
       if (success) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -460,10 +451,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: _isLoading
-            ? Center(
-                child: CircularProgressIndicator(
-                  color: AppColors.primaryColor,
-                ),
+            ? const Center(
+                child: LoadingAnimation(size: 200),
               )
             : SafeArea(
                 bottom: false, // السماح للمحتوى بالظهور خلف Bottom Nav
@@ -490,12 +479,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         // بطاقة القائمة
                         _buildMenuCard(),
+
+                        const SizedBox(height: 30),
+
+                        // نص المطورين
+                        _buildDeveloperText(),
+
+                        const SizedBox(height: 10),
                       ],
                     ),
                   ),
                 ),
               ),
       ),
+    );
+  }
+
+  // نص المطورين - بسيط في الأسفل
+  Widget _buildDeveloperText() {
+    return Column(
+      children: [
+        Text(
+          'Powered by',
+          style: GoogleFonts.poppins(
+            color: Colors.grey[400],
+            fontSize: 9,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'S&K للحلول البرمجية ®',
+          style: GoogleFonts.cairo(
+            color: Colors.grey[500],
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          '07838999658',
+          style: GoogleFonts.poppins(
+            color: Colors.grey[400],
+            fontSize: 9,
+          ),
+        ),
+      ],
     );
   }
 
@@ -577,7 +606,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // بطاقة المستخدم
   Widget _buildUserCard() {
-    final name = _customerInfo?['name'] ?? _customerInfo?['full_name'] ?? 'مستخدم';
+    final name =
+        _customerInfo?['name'] ?? _customerInfo?['full_name'] ?? 'مستخدم';
     final phone = _customerInfo?['phone'] ?? '';
 
     return Container(

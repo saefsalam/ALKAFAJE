@@ -102,14 +102,13 @@ class NoConnectionScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            child: Center(
+                            child: const Center(
                               child: SizedBox(
-                                width: 30,
-                                height: 30,
+                                width: 40,
+                                height: 40,
                                 child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.primaryColor),
+                                  color: Colors.white,
+                                  strokeWidth: 3,
                                 ),
                               ),
                             ),

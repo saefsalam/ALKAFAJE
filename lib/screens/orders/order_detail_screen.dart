@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:get/get.dart';
 import '../../utls/constants.dart';
 import '../../services/order_service.dart';
 import '../../models/order_model.dart';
+import '../../models/product_model.dart';
+import '../../widget/loading_animation.dart';
+import '../../main.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // شاشة تفاصيل الطلب
@@ -139,17 +143,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           actions: [
             IconButton(
               icon: Icon(Icons.arrow_forward, color: AppColors.primaryColor),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                // إذا لم يكن هناك شاشة للرجوع إليها، اذهب للشاشة الرئيسية
+                if (Navigator.canPop(context)) {
+                  Navigator.pop(context);
+                } else {
+                  Get.offAll(() => const MainScreen());
+                }
+              },
             ),
           ],
         ),
         body: _isLoading
             ? const Center(
-                child: CircularProgressIndicator(color: AppColors.primaryColor),
+                child: LoadingAnimation(size: 200),
               )
             : _orderData == null
                 ? _buildErrorState()
-                : _buildContent(),
+                : _buildContentWithFixedButton(),
       ),
     );
   }
@@ -184,10 +195,41 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContentWithFixedButton() {
+    final order = _orderData!['order'] as Map<String, dynamic>;
+    final status =
+        OrderStatusExtension.fromString(order['status'] ?? 'pending');
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    // حساب ارتفاع الزر + المسافات
+    final bool showCancelButton = status == OrderStatus.pending;
+    final double bottomBarHeight = showCancelButton ? 84 + bottomPadding : 0;
+
+    return Stack(
+      children: [
+        // المحتوى القابل للتمرير
+        Positioned.fill(
+          child: _buildContent(bottomPadding: bottomBarHeight),
+        ),
+
+        // زر إلغاء الطلب الثابت
+        if (showCancelButton)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildFixedCancelButton(),
+          ),
+      ],
+    );
+  }
+
+  // ignore: unused_element
+  Widget _buildContent({double bottomPadding = 0}) {
     final order = _orderData!['order'] as Map<String, dynamic>;
     final items = _orderData!['items'] as List;
-    final statusHistory = _orderData!['status_history'] as List;
+    // سجل الحالات مخفي حالياً لتبسيط الواجهة للزبون
+    // final statusHistory = _orderData!['status_history'] as List;
 
     final status =
         OrderStatusExtension.fromString(order['status'] ?? 'pending');
@@ -199,7 +241,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       onRefresh: _loadOrderDetails,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -234,20 +276,90 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               _buildNoteCard(order['note']),
             ],
 
-            // ─── سجل الحالات ───
-            if (statusHistory.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _buildStatusHistoryCard(statusHistory),
-            ],
+            // ─── سجل الحالات (مخفي لتبسيط الواجهة للزبون) ───
+            // if (statusHistory.isNotEmpty) ...[
+            //   const SizedBox(height: 16),
+            //   _buildStatusHistoryCard(statusHistory),
+            // ],
 
-            // ─── زر إلغاء الطلب ───
-            if (status == OrderStatus.pending) ...[
-              const SizedBox(height: 20),
-              _buildCancelButton(),
-            ],
-
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
           ],
+        ),
+      ),
+    );
+  }
+
+  // زر إلغاء الطلب الثابت - شريط سفلي مقوس من الأعلى
+  Widget _buildFixedCancelButton() {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottomPadding),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 15,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: ElevatedButton(
+          onPressed: _isCancelling ? null : _cancelOrder,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red.shade600,
+            disabledBackgroundColor: Colors.red.shade300,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 0,
+          ),
+          child: _isCancelling
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'جاري إلغاء الطلب...',
+                      style: GoogleFonts.cairo(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.cancel_outlined, color: Colors.white, size: 22),
+                    const SizedBox(width: 8),
+                    Text(
+                      'إلغاء الطلب',
+                      style: GoogleFonts.cairo(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -471,6 +583,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             final quantity = item['quantity'] as int;
             final unitPrice = (item['unit_price'] as num).toDouble();
             final lineTotal = (item['line_total'] as num).toDouble();
+            final String selectionLabel = formatProductSelectionLabel(
+              colorName: item['selected_color_name']?.toString(),
+              sizeName: item['selected_size_name']?.toString(),
+            );
 
             // الصورة
             String? imagePath;
@@ -521,6 +637,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        if (selectionLabel.isNotEmpty)
+                          Text(
+                            selectionLabel,
+                            style: GoogleFonts.cairo(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         Text(
                           '${unitPrice.toStringAsFixed(0)} د.ع × $quantity',
                           style: GoogleFonts.cairo(
@@ -642,6 +767,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _buildPriceCard(Map<String, dynamic> order) {
     final subtotal = (order['subtotal'] as num).toDouble();
     final deliveryFee = (order['delivery_fee'] as num).toDouble();
+    final discountAmount = (order['discount_amount'] as num?)?.toDouble() ?? 0;
+    final discountCodeSnapshot = order['discount_code_snapshot']?.toString();
     final total = (order['total'] as num).toDouble();
 
     return Container(
@@ -667,6 +794,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ? 'مجاني'
                 : '${deliveryFee.toStringAsFixed(0)} د.ع',
           ),
+          if (discountAmount > 0) ...[
+            const SizedBox(height: 6),
+            _buildPriceRow(
+              discountCodeSnapshot == null || discountCodeSnapshot.isEmpty
+                  ? 'خصم البرومو'
+                  : 'خصم البرومو ($discountCodeSnapshot)',
+              '-${discountAmount.toStringAsFixed(0)} د.ع',
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Divider(),
@@ -747,8 +883,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  // ─── سجل الحالات ──────────────────────────────────────────────────
+  // ─── سجل الحالات (مخفي حالياً - محفوظ للمستقبل) ─────────────────────
 
+  // ignore: unused_element
   Widget _buildStatusHistoryCard(List statusHistory) {
     final timeFormat = DateFormat('hh:mm a');
     final dateFormat = DateFormat('yyyy/MM/dd');
@@ -871,11 +1008,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ),
         child: _isCancelling
             ? const SizedBox(
-                height: 20,
-                width: 20,
+                height: 30,
+                width: 30,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2,
                   color: Colors.red,
+                  strokeWidth: 2.5,
                 ),
               )
             : Row(

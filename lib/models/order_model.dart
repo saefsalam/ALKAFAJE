@@ -140,7 +140,10 @@ class Order {
   final OrderStatus status;
   final double subtotal;
   final double deliveryFee;
+  final double discountAmount;
   final double total;
+  final int? discountCodeId;
+  final String? discountCodeSnapshot;
   final String? note;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -156,7 +159,10 @@ class Order {
     required this.status,
     required this.subtotal,
     required this.deliveryFee,
+    required this.discountAmount,
     required this.total,
+    this.discountCodeId,
+    this.discountCodeSnapshot,
     this.note,
     required this.createdAt,
     required this.updatedAt,
@@ -173,17 +179,19 @@ class Order {
       status: OrderStatusExtension.fromString(json['status'] ?? 'pending'),
       subtotal: (json['subtotal'] ?? 0).toDouble(),
       deliveryFee: (json['delivery_fee'] ?? 0).toDouble(),
+      discountAmount: (json['discount_amount'] ?? 0).toDouble(),
       total: (json['total'] ?? 0).toDouble(),
+      discountCodeId: (json['discount_code_id'] as num?)?.toInt(),
+      discountCodeSnapshot: json['discount_code_snapshot']?.toString(),
       note: json['note'],
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
       customerName: json['customer_name'],
-      items:
-          json['items'] != null
-              ? (json['items'] as List)
-                  .map((item) => OrderItem.fromJson(item))
-                  .toList()
-              : null,
+      items: json['items'] != null
+          ? (json['items'] as List)
+              .map((item) => OrderItem.fromJson(item))
+              .toList()
+          : null,
     );
   }
 
@@ -196,7 +204,10 @@ class Order {
       'status': status.toDbString(),
       'subtotal': subtotal,
       'delivery_fee': deliveryFee,
+      'discount_amount': discountAmount,
       'total': total,
+      'discount_code_id': discountCodeId,
+      'discount_code_snapshot': discountCodeSnapshot,
       'note': note,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -214,7 +225,10 @@ class Order {
     OrderStatus? status,
     double? subtotal,
     double? deliveryFee,
+    double? discountAmount,
     double? total,
+    int? discountCodeId,
+    String? discountCodeSnapshot,
     String? note,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -228,7 +242,10 @@ class Order {
       status: status ?? this.status,
       subtotal: subtotal ?? this.subtotal,
       deliveryFee: deliveryFee ?? this.deliveryFee,
+      discountAmount: discountAmount ?? this.discountAmount,
       total: total ?? this.total,
+      discountCodeId: discountCodeId ?? this.discountCodeId,
+      discountCodeSnapshot: discountCodeSnapshot ?? this.discountCodeSnapshot,
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -250,6 +267,11 @@ class OrderItem {
   final double unitPrice;
   final double lineTotal;
   final String? titleSnapshot;
+  final int? selectedColorId;
+  final String? selectedColorName;
+  final String? selectedColorHex;
+  final int? selectedSizeId;
+  final String? selectedSizeName;
   final DateTime createdAt;
 
   OrderItem({
@@ -260,8 +282,24 @@ class OrderItem {
     required this.unitPrice,
     required this.lineTotal,
     this.titleSnapshot,
+    this.selectedColorId,
+    this.selectedColorName,
+    this.selectedColorHex,
+    this.selectedSizeId,
+    this.selectedSizeName,
     required this.createdAt,
   });
+
+  String get formattedSelection {
+    final List<String> parts = <String>[];
+    if (selectedColorName != null && selectedColorName!.trim().isNotEmpty) {
+      parts.add('اللون: ${selectedColorName!.trim()}');
+    }
+    if (selectedSizeName != null && selectedSizeName!.trim().isNotEmpty) {
+      parts.add('الحجم: ${selectedSizeName!.trim()}');
+    }
+    return parts.join(' - ');
+  }
 
   /// تحويل من JSON
   factory OrderItem.fromJson(Map<String, dynamic> json) {
@@ -273,6 +311,11 @@ class OrderItem {
       unitPrice: (json['unit_price'] ?? 0).toDouble(),
       lineTotal: (json['line_total'] ?? 0).toDouble(),
       titleSnapshot: json['title_snapshot'],
+      selectedColorId: (json['selected_color_id'] as num?)?.toInt(),
+      selectedColorName: json['selected_color_name']?.toString(),
+      selectedColorHex: json['selected_color_hex']?.toString(),
+      selectedSizeId: (json['selected_size_id'] as num?)?.toInt(),
+      selectedSizeName: json['selected_size_name']?.toString(),
       createdAt: DateTime.parse(json['created_at']),
     );
   }
@@ -287,6 +330,11 @@ class OrderItem {
       'unit_price': unitPrice,
       'line_total': lineTotal,
       'title_snapshot': titleSnapshot,
+      'selected_color_id': selectedColorId,
+      'selected_color_name': selectedColorName,
+      'selected_color_hex': selectedColorHex,
+      'selected_size_id': selectedSizeId,
+      'selected_size_name': selectedSizeName,
       'created_at': createdAt.toIso8601String(),
     };
   }

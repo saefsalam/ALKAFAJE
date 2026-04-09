@@ -125,7 +125,8 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
 
       if (result['success'] == true) {
         // إعادة تسجيل الدخول بعد التحقق من OTP بنجاح
-        final loginSuccess = await AuthService.completeLoginAfterOtpVerification(
+        final loginSuccess =
+            await AuthService.completeLoginAfterOtpVerification(
           phone: widget.phone,
         );
 
@@ -136,8 +137,11 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
         }
 
         // نقل السلة المحلية إلى قاعدة البيانات
-        await LocalCartService.syncCartToDatabase(widget.authUserId);
-        
+        final bool cartSynced =
+            await LocalCartService.syncCartToDatabase(widget.authUserId);
+        final String? cartSyncMessage =
+            cartSynced ? null : LocalCartService.lastCartOperationError;
+
         // إطلاق إشعار لتحديث السلة
         CartUpdateService.notifyCartChanged();
 
@@ -145,12 +149,15 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'تم التحقق بنجاح! مرحباً ${widget.fullName} 🎉',
+                cartSyncMessage == null
+                    ? 'تم التحقق بنجاح! مرحباً ${widget.fullName} 🎉'
+                    : 'تم التحقق بنجاح! مرحباً ${widget.fullName} 🎉\n$cartSyncMessage',
                 style: GoogleFonts.cairo(),
                 textAlign: TextAlign.center,
               ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
+              backgroundColor:
+                  cartSyncMessage == null ? Colors.green : Colors.orange,
+              duration: Duration(seconds: cartSyncMessage == null ? 2 : 4),
             ),
           );
 
@@ -455,8 +462,8 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                   ),
                   child: _isLoading
                       ? const SizedBox(
-                          height: 24,
-                          width: 24,
+                          height: 30,
+                          width: 30,
                           child: CircularProgressIndicator(
                             color: Colors.white,
                             strokeWidth: 2.5,
@@ -489,9 +496,12 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                   const SizedBox(width: 4),
                   _isResending
                       ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primaryColor,
+                          ),
                         )
                       : TextButton(
                           onPressed: _resendSeconds > 0 ? null : _resendOtp,

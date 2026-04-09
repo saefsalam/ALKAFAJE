@@ -7,6 +7,7 @@ import '../utls/constants.dart';
 import '../models/product_model.dart';
 import '../widget/bubble_button.dart';
 import '../widget/Mytext.dart';
+import '../widget/loading_animation.dart';
 import 'product_detail_screen.dart';
 import '../main.dart';
 import '../services/auth_service.dart';
@@ -161,13 +162,19 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               title,
               description,
               price,
+              discount_price,
+              discount_percent,
+              is_active,
+              is_deleted,
               item_images (
                 id,
                 item_id,
                 image_path,
                 sort_order,
                 is_primary
-              )
+              ),
+              item_colors (*),
+              item_sizes (*)
             )
           ''')
           .eq('shop_id', SupabaseConfig.shopId)
@@ -178,26 +185,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       for (var fav in data) {
         final itemData = fav['items'];
         if (itemData != null) {
-          // تحويل الصور
-          List<ItemImage> images = [];
-          if (itemData['item_images'] != null) {
-            images = (itemData['item_images'] as List)
-                .map((img) => ItemImage.fromJson(img))
-                .toList();
-          }
-
-          // إنشاء Item
-          final item = Item(
-            id: itemData['id'],
-            shopId: itemData['shop_id'],
-            categoryId: itemData['category_id'],
-            title: itemData['title'] ?? '',
-            description: itemData['description'],
-            price: (itemData['price'] as num).toDouble(),
-            images: images,
+          favoriteItems.add(
+            Item.fromJson(Map<String, dynamic>.from(itemData)),
           );
-
-          favoriteItems.add(item);
         }
       }
 
@@ -367,10 +357,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           // المحتوى
           Expanded(
             child: _isLoading
-                ? Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.primaryColor,
-                    ),
+                ? const Center(
+                    child: LoadingAnimation(size: 200),
                   )
                 : _favorites.isEmpty
                     ? Center(
@@ -480,13 +468,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                             color: AppColors.primaryColor.withOpacity(
                               0.08,
                             ),
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.primaryColor.withOpacity(
-                                  0.5,
-                                ),
-                              ),
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           ),
                           errorWidget: (context, url, error) => Container(
@@ -545,28 +528,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                       ),
                     ),
                   ],
-                ),
-              ),
-
-              // زر المفضلة
-              GestureDetector(
-                onTap: () => _removeItem(index),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.primaryColor.withOpacity(0.2),
-                      width: 1,
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.favorite,
-                    color: Colors.red,
-                    size: 20,
-                  ),
                 ),
               ),
             ],

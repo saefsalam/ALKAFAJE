@@ -1,97 +1,210 @@
 import 'dart:convert';
-import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../main.dart';
-import 'cart_update_service.dart';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// خدمة السلة المحلية - تخزين السلة محلياً قبل تسجيل الدخول
-// ═══════════════════════════════════════════════════════════════════════════
+import '../main.dart';
+import '../models/product_model.dart';
+import 'cart_update_service.dart';
 
 class LocalCartService {
   static const String _cartKey = 'local_cart';
   static final _supabase = Supabase.instance.client;
 
-  // حفظ السلة محلياً
-  static Future<bool> saveLocalCart(Map<int, int> cartItems) async {
+  static bool? _cartOptionsSchemaSupported;
+  static String? _lastCartOperationError;
+
+  static const String _cartOptionsMigrationMessage =
+      'قاعدة البيانات تحتاج تحديث دعم الألوان والأحجام قبل نقل هذا المنتج إلى السلة.';
+  static const String _genericLocalCartMessage =
+      'تعذر تحديث السلة المحلية حالياً. حاول مرة أخرى.';
+  static const String _genericSyncMessage =
+      'تعذر نقل السلة إلى الحساب حالياً. حاول مرة أخرى.';
+
+  static String? get lastCartOperationError => _lastCartOperationError;
+
+  static void _clearCartOperationError() {
+    _lastCartOperationError = null;
+  }
+
+  static void _setCartOperationError(String message) {
+    _lastCartOperationError = message;
+  }
+
+  static bool _isMissingCartOptionsSchemaError(Object error) {
+    if (error is! PostgrestException) {
+      return false;
+    }
+
+    final String details =
+        '${error.code ?? ''} ${error.message} ${error.details ?? ''} ${error.hint ?? ''}'
+            .toLowerCase();
+
+    return details.contains('42703') &&
+        (details.contains('selection_key') ||
+            details.contains('selected_color') ||
+            details.contains('selected_size'));
+  }
+
+  static bool _containsProductOptions(List<Map<String, dynamic>> entries) {
+    return entries.any(
+      (entry) => !ProductOptionSelection.fromJson(entry).isEmpty,
+    );
+  }
+
+  static Map<String, dynamic> _normalizeEntry(Map<String, dynamic> raw) {
+    final int itemId =
+        (raw['item_id'] as num?)?.toInt() ?? (raw['id'] as num?)?.toInt() ?? 0;
+    final int quantity = (raw['quantity'] as num?)?.toInt() ?? 1;
+    final ProductOptionSelection selection =
+        ProductOptionSelection.fromJson(raw);
+    final String selectionKey =
+        raw['selection_key']?.toString().trim().isNotEmpty == true
+            ? raw['selection_key'].toString()
+            : selection.selectionKey;
+    final String lineId =
+        raw['cart_line_id']?.toString().trim().isNotEmpty == true
+            ? raw['cart_line_id'].toString()
+            : '${itemId}_$selectionKey';
+
+    return <String, dynamic>{
+      'cart_line_id': lineId,
+      'item_id': itemId,
+      'quantity': quantity < 1 ? 1 : quantity,
+      ...selection.toCartPayload(),
+      'selection_key': selectionKey,
+    };
+  }
+
+  static Future<List<Map<String, dynamic>>> _loadEntries() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cartJson = jsonEncode(
-        cartItems.map((key, value) => MapEntry(key.toString(), value)),
-      );
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? cartJson = prefs.getString(_cartKey);
+      if (cartJson == null || cartJson.trim().isEmpty) {
+        return <Map<String, dynamic>>[];
+      }
+
+      final dynamic decoded = jsonDecode(cartJson);
+
+      if (decoded is Map<String, dynamic>) {
+        return decoded.entries
+            .map(
+              (entry) => _normalizeEntry(<String, dynamic>{
+                'cart_line_id': '${entry.key}_${buildProductSelectionKey()}',
+                'item_id': int.tryParse(entry.key) ?? 0,
+                'quantity': entry.value,
+              }),
+            )
+            .where((entry) => (entry['item_id'] as int) > 0)
+            .toList();
+      }
+
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map(
+              (entry) => _normalizeEntry(
+                Map<String, dynamic>.from(entry.cast<String, dynamic>()),
+              ),
+            )
+            .where((entry) => (entry['item_id'] as int) > 0)
+            .toList();
+      }
+
+      return <Map<String, dynamic>>[];
+    } catch (e) {
+      print('❌ خطأ في تحميل السلة المحلية: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  static Future<bool> _saveEntries(List<Map<String, dynamic>> entries) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String cartJson = jsonEncode(entries);
       await prefs.setString(_cartKey, cartJson);
       return true;
     } catch (e) {
+      _setCartOperationError(_genericLocalCartMessage);
       print('❌ خطأ في حفظ السلة محلياً: $e');
       return false;
     }
   }
 
-  // تحميل السلة المحلية
-  static Future<Map<int, int>> loadLocalCart() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cartJson = prefs.getString(_cartKey);
+  static Future<bool> saveLocalCart(Map<int, int> cartItems) async {
+    _clearCartOperationError();
+    final List<Map<String, dynamic>> entries = cartItems.entries
+        .where((entry) => entry.value > 0)
+        .map(
+          (entry) => _normalizeEntry(<String, dynamic>{
+            'cart_line_id': '${entry.key}_${buildProductSelectionKey()}',
+            'item_id': entry.key,
+            'quantity': entry.value,
+          }),
+        )
+        .toList();
 
-      if (cartJson == null) return {};
-
-      final Map<String, dynamic> decoded = jsonDecode(cartJson);
-      return decoded.map(
-        (key, value) => MapEntry(int.parse(key), value as int),
-      );
-    } catch (e) {
-      print('❌ خطأ في تحميل السلة المحلية: $e');
-      return {};
-    }
+    return _saveEntries(entries);
   }
 
-  // مسح السلة المحلية
+  static Future<Map<int, int>> loadLocalCart() async {
+    final List<Map<String, dynamic>> entries = await _loadEntries();
+    final Map<int, int> cart = <int, int>{};
+
+    for (final Map<String, dynamic> entry in entries) {
+      final int itemId = entry['item_id'] as int;
+      final int quantity = entry['quantity'] as int;
+      cart[itemId] = (cart[itemId] ?? 0) + quantity;
+    }
+
+    return cart;
+  }
+
   static Future<bool> clearLocalCart() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      _clearCartOperationError();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.remove(_cartKey);
       return true;
     } catch (e) {
+      _setCartOperationError(_genericLocalCartMessage);
       print('❌ خطأ في مسح السلة المحلية: $e');
       return false;
     }
   }
 
-  // نقل السلة المحلية إلى قاعدة البيانات
   static Future<bool> syncCartToDatabase(String authUserId) async {
     try {
-      final localCart = await loadLocalCart();
-      if (localCart.isEmpty) return true;
+      _clearCartOperationError();
+      final List<Map<String, dynamic>> entries = await _loadEntries();
+      if (entries.isEmpty) return true;
 
-      // الحصول على customer_id (bigint) من auth_user_id (uuid)
-      final customerResponse = await _supabase
+      final Map<String, dynamic>? customerResponse = await _supabase
           .from('customers')
           .select('id')
           .eq('auth_user_id', authUserId)
           .maybeSingle();
 
       if (customerResponse == null) {
+        _setCartOperationError('لم يتم العثور على حساب العميل لربط السلة.');
         print('❌ لم يتم العثور على سجل العميل');
         return false;
       }
 
-      final customerId = customerResponse['id'] as int;
+      final int customerId = customerResponse['id'] as int;
 
-      // التحقق من وجود سلة موجودة أو إنشاء سلة جديدة
-      var cartResponse = await _supabase
+      final Map<String, dynamic>? cartResponse = await _supabase
           .from('carts')
           .select('id')
           .eq('customer_id', customerId)
           .eq('shop_id', SupabaseConfig.shopId)
           .maybeSingle();
 
-      int cartId;
+      final int cartId;
       if (cartResponse != null) {
         cartId = cartResponse['id'] as int;
       } else {
-        // إنشاء سلة جديدة
-        final newCart = await _supabase
+        final Map<String, dynamic> newCart = await _supabase
             .from('carts')
             .insert({
               'shop_id': SupabaseConfig.shopId,
@@ -102,113 +215,301 @@ class LocalCartService {
         cartId = newCart['id'] as int;
       }
 
-      // إضافة المنتجات
-      for (var entry in localCart.entries) {
-        // التحقق من وجود المنتج في السلة
-        final existingItem = await _supabase
-            .from('cart_items')
-            .select('id, quantity')
-            .eq('cart_id', cartId)
-            .eq('item_id', entry.key)
-            .maybeSingle();
+      if (_cartOptionsSchemaSupported == false) {
+        final bool syncedLegacy = await _syncLegacyEntries(
+          cartId: cartId,
+          entries: entries,
+        );
+        if (!syncedLegacy) {
+          return false;
+        }
+      } else {
+        try {
+          await _syncEntriesWithOptions(
+            cartId: cartId,
+            entries: entries,
+          );
+          _cartOptionsSchemaSupported = true;
+        } catch (e) {
+          if (!_isMissingCartOptionsSchemaError(e)) {
+            rethrow;
+          }
 
-        if (existingItem != null) {
-          // تحديث الكمية
-          await _supabase.from('cart_items').update({
-            'quantity': (existingItem['quantity'] as int) + entry.value,
-          }).eq('id', existingItem['id']);
-        } else {
-          // إضافة منتج جديد
-          await _supabase.from('cart_items').insert({
-            'cart_id': cartId,
-            'item_id': entry.key,
-            'quantity': entry.value,
-          });
+          _cartOptionsSchemaSupported = false;
+          final bool syncedLegacy = await _syncLegacyEntries(
+            cartId: cartId,
+            entries: entries,
+          );
+          if (!syncedLegacy) {
+            return false;
+          }
         }
       }
 
-      // مسح السلة المحلية
       await clearLocalCart();
-
-      print('✅ تم نقل ${localCart.length} منتج إلى قاعدة البيانات');
-      
-      // إشعار بتغيير السلة
       CartUpdateService.notifyCartChanged();
-      
       return true;
     } catch (e) {
+      _setCartOperationError(
+        _lastCartOperationError ?? _genericSyncMessage,
+      );
       print('❌ خطأ في نقل السلة إلى قاعدة البيانات: $e');
       return false;
     }
   }
 
-  // إضافة منتج للسلة المحلية
-  static Future<bool> addToLocalCart(int itemId, int quantity) async {
+  static Future<void> _syncEntriesWithOptions({
+    required int cartId,
+    required List<Map<String, dynamic>> entries,
+  }) async {
+    for (final Map<String, dynamic> entry in entries) {
+      final int itemId = entry['item_id'] as int;
+      final String selectionKey = entry['selection_key'].toString();
+      final int quantity = entry['quantity'] as int;
+
+      final Map<String, dynamic>? existingItem = await _supabase
+          .from('cart_items')
+          .select('id, quantity')
+          .eq('cart_id', cartId)
+          .eq('item_id', itemId)
+          .eq('selection_key', selectionKey)
+          .maybeSingle();
+
+      if (existingItem != null) {
+        await _supabase.from('cart_items').update({
+          'quantity': (existingItem['quantity'] as int) + quantity,
+        }).eq('id', existingItem['id']);
+      } else {
+        await _supabase.from('cart_items').insert({
+          'cart_id': cartId,
+          'item_id': itemId,
+          'quantity': quantity,
+          'selection_key': selectionKey,
+          'selected_color_id': entry['selected_color_id'],
+          'selected_color_name': entry['selected_color_name'],
+          'selected_color_hex': entry['selected_color_hex'],
+          'selected_size_id': entry['selected_size_id'],
+          'selected_size_name': entry['selected_size_name'],
+        });
+      }
+    }
+  }
+
+  static Future<bool> _syncLegacyEntries({
+    required int cartId,
+    required List<Map<String, dynamic>> entries,
+  }) async {
+    if (_containsProductOptions(entries)) {
+      _setCartOperationError(_cartOptionsMigrationMessage);
+      return false;
+    }
+
+    for (final Map<String, dynamic> entry in entries) {
+      final int itemId = entry['item_id'] as int;
+      final int quantity = entry['quantity'] as int;
+
+      final Map<String, dynamic>? existingItem = await _supabase
+          .from('cart_items')
+          .select('id, quantity')
+          .eq('cart_id', cartId)
+          .eq('item_id', itemId)
+          .maybeSingle();
+
+      if (existingItem != null) {
+        await _supabase.from('cart_items').update({
+          'quantity': (existingItem['quantity'] as int) + quantity,
+        }).eq('id', existingItem['id']);
+      } else {
+        await _supabase.from('cart_items').insert({
+          'cart_id': cartId,
+          'item_id': itemId,
+          'quantity': quantity,
+        });
+      }
+    }
+
+    return true;
+  }
+
+  static Future<bool> addToLocalCart(
+    int itemId,
+    int quantity, {
+    ProductOptionSelection? selection,
+  }) async {
     try {
-      final cart = await loadLocalCart();
-      cart[itemId] = (cart[itemId] ?? 0) + quantity;
-      final result = await saveLocalCart(cart);
-      if (result) CartUpdateService.notifyCartChanged();
+      _clearCartOperationError();
+      final List<Map<String, dynamic>> entries = await _loadEntries();
+      final ProductOptionSelection normalizedSelection =
+          selection ?? const ProductOptionSelection();
+      final int index = entries.indexWhere(
+        (entry) =>
+            entry['item_id'] == itemId &&
+            entry['selection_key'] == normalizedSelection.selectionKey,
+      );
+
+      if (index >= 0) {
+        entries[index]['quantity'] =
+            (entries[index]['quantity'] as int) + quantity;
+      } else {
+        entries.add(
+          _normalizeEntry(<String, dynamic>{
+            'cart_line_id':
+                '${DateTime.now().microsecondsSinceEpoch}_${itemId}_${normalizedSelection.selectionKey}',
+            'item_id': itemId,
+            'quantity': quantity,
+            ...normalizedSelection.toCartPayload(),
+          }),
+        );
+      }
+
+      final bool result = await _saveEntries(entries);
+      if (result) {
+        CartUpdateService.notifyCartChanged();
+      }
       return result;
     } catch (e) {
+      _setCartOperationError(_genericLocalCartMessage);
       print('❌ خطأ في إضافة المنتج للسلة المحلية: $e');
       return false;
     }
   }
 
-  // تحديث كمية منتج في السلة المحلية
-  static Future<bool> updateLocalCartItem(int itemId, int quantity) async {
+  static Future<bool> updateLocalCartEntryQuantity(
+    String cartLineId,
+    int quantity,
+  ) async {
     try {
-      final cart = await loadLocalCart();
-      if (quantity <= 0) {
-        cart.remove(itemId);
-      } else {
-        cart[itemId] = quantity;
+      _clearCartOperationError();
+      final List<Map<String, dynamic>> entries = await _loadEntries();
+      final int index = entries.indexWhere(
+        (entry) => entry['cart_line_id'] == cartLineId,
+      );
+      if (index < 0) {
+        return false;
       }
-      final result = await saveLocalCart(cart);
-      if (result) CartUpdateService.notifyCartChanged();
+
+      if (quantity <= 0) {
+        entries.removeAt(index);
+      } else {
+        entries[index]['quantity'] = quantity;
+      }
+
+      final bool result = await _saveEntries(entries);
+      if (result) {
+        CartUpdateService.notifyCartChanged();
+      }
       return result;
     } catch (e) {
+      _setCartOperationError(_genericLocalCartMessage);
+      print('❌ خطأ في تحديث عنصر السلة المحلية: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateLocalCartItem(
+    int itemId,
+    int quantity, {
+    String? selectionKey,
+  }) async {
+    try {
+      _clearCartOperationError();
+      final List<Map<String, dynamic>> entries = await _loadEntries();
+      final String key = selectionKey ?? buildProductSelectionKey();
+      final int index = entries.indexWhere(
+        (entry) => entry['item_id'] == itemId && entry['selection_key'] == key,
+      );
+
+      if (index < 0) {
+        if (quantity <= 0) return true;
+        entries.add(
+          _normalizeEntry(<String, dynamic>{
+            'cart_line_id':
+                '${DateTime.now().microsecondsSinceEpoch}_${itemId}_$key',
+            'item_id': itemId,
+            'quantity': quantity,
+            'selection_key': key,
+          }),
+        );
+      } else if (quantity <= 0) {
+        entries.removeAt(index);
+      } else {
+        entries[index]['quantity'] = quantity;
+      }
+
+      final bool result = await _saveEntries(entries);
+      if (result) {
+        CartUpdateService.notifyCartChanged();
+      }
+      return result;
+    } catch (e) {
+      _setCartOperationError(_genericLocalCartMessage);
       print('❌ خطأ في تحديث المنتج في السلة المحلية: $e');
       return false;
     }
   }
 
-  // حذف منتج من السلة المحلية
-  static Future<bool> removeFromLocalCart(int itemId) async {
+  static Future<bool> removeLocalCartEntry(String cartLineId) async {
     try {
-      final cart = await loadLocalCart();
-      cart.remove(itemId);
-      final result = await saveLocalCart(cart);
-      if (result) CartUpdateService.notifyCartChanged();
+      _clearCartOperationError();
+      final List<Map<String, dynamic>> entries = await _loadEntries();
+      entries.removeWhere((entry) => entry['cart_line_id'] == cartLineId);
+      final bool result = await _saveEntries(entries);
+      if (result) {
+        CartUpdateService.notifyCartChanged();
+      }
       return result;
     } catch (e) {
+      _setCartOperationError(_genericLocalCartMessage);
+      print('❌ خطأ في حذف عنصر السلة المحلية: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> removeFromLocalCart(
+    int itemId, {
+    String? selectionKey,
+  }) async {
+    try {
+      _clearCartOperationError();
+      final List<Map<String, dynamic>> entries = await _loadEntries();
+      final String key = selectionKey ?? buildProductSelectionKey();
+      entries.removeWhere(
+        (entry) => entry['item_id'] == itemId && entry['selection_key'] == key,
+      );
+      final bool result = await _saveEntries(entries);
+      if (result) {
+        CartUpdateService.notifyCartChanged();
+      }
+      return result;
+    } catch (e) {
+      _setCartOperationError(_genericLocalCartMessage);
       print('❌ خطأ في حذف المنتج من السلة المحلية: $e');
       return false;
     }
   }
 
-  // الحصول على عدد المنتجات في السلة المحلية
   static Future<int> getLocalCartCount() async {
-    final cart = await loadLocalCart();
-    return cart.values.fold<int>(0, (sum, qty) => sum + qty);
+    final List<Map<String, dynamic>> entries = await _loadEntries();
+    return entries.fold<int>(
+      0,
+      (sum, entry) => sum + ((entry['quantity'] as int?) ?? 0),
+    );
   }
 
-  /// جلب عناصر السلة المحلية مع تفاصيل المنتجات
   static Future<List<Map<String, dynamic>>> getCartItems() async {
-    final cart = await loadLocalCart();
-    if (cart.isEmpty) return [];
+    final List<Map<String, dynamic>> entries = await _loadEntries();
+    if (entries.isEmpty) return <Map<String, dynamic>>[];
 
-    final List<Map<String, dynamic>> items = [];
+    final List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
 
     try {
-      // جلب تفاصيل كل منتج من قاعدة البيانات
-      for (var entry in cart.entries) {
-        final itemId = entry.key;
-        final quantity = entry.value;
+      for (final Map<String, dynamic> entry in entries) {
+        final int itemId = entry['item_id'] as int;
+        final int quantity = entry['quantity'] as int;
 
         try {
-          final itemData = await _supabase.from('items').select('''
+          final Map<String, dynamic> itemData =
+              await _supabase.from('items').select('''
                 id,
                 title,
                 description,
@@ -221,18 +522,25 @@ class LocalCartService {
                 )
               ''').eq('id', itemId).single();
 
-          // إيجاد الصورة الأساسية
           String? imagePath;
-          final images = itemData['item_images'] as List?;
+          final List<dynamic>? images =
+              itemData['item_images'] as List<dynamic>?;
           if (images != null && images.isNotEmpty) {
-            final primaryImage = images.firstWhere(
+            final dynamic primaryImage = images.firstWhere(
               (img) => img['is_primary'] == true,
               orElse: () => images.first,
             );
-            imagePath = primaryImage['image_path'];
+            imagePath = primaryImage['image_path']?.toString();
           }
 
           items.add({
+            'cart_line_id': entry['cart_line_id'],
+            'selection_key': entry['selection_key'],
+            'selected_color_id': entry['selected_color_id'],
+            'selected_color_name': entry['selected_color_name'],
+            'selected_color_hex': entry['selected_color_hex'],
+            'selected_size_id': entry['selected_size_id'],
+            'selected_size_name': entry['selected_size_name'],
             'id': itemId,
             'quantity': quantity,
             'title': itemData['title'],
@@ -250,15 +558,29 @@ class LocalCartService {
       return items;
     } catch (e) {
       print('❌ خطأ في جلب عناصر السلة: $e');
-      return [];
+      return <Map<String, dynamic>>[];
     }
   }
 
-  // إعادة تسمية الدوال القديمة لتكون أكثر وضوحاً
-  static Future<bool> addToCart(int itemId, int quantity) =>
-      addToLocalCart(itemId, quantity);
-  static Future<bool> updateQuantity(int itemId, int quantity) =>
-      updateLocalCartItem(itemId, quantity);
-  static Future<bool> removeFromCart(int itemId) => removeFromLocalCart(itemId);
+  static Future<bool> addToCart(
+    int itemId,
+    int quantity, {
+    ProductOptionSelection? selection,
+  }) =>
+      addToLocalCart(itemId, quantity, selection: selection);
+
+  static Future<bool> updateQuantity(
+    int itemId,
+    int quantity, {
+    String? selectionKey,
+  }) =>
+      updateLocalCartItem(itemId, quantity, selectionKey: selectionKey);
+
+  static Future<bool> removeFromCart(
+    int itemId, {
+    String? selectionKey,
+  }) =>
+      removeFromLocalCart(itemId, selectionKey: selectionKey);
+
   static Future<bool> clearCart() => clearLocalCart();
 }

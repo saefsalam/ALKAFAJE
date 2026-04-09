@@ -67,7 +67,9 @@ class CustomSearchBar extends StatelessWidget {
               size: 22,
             ),
           ),
-          suffixIcon: showClearButton && controller != null && controller!.text.isNotEmpty
+          suffixIcon: showClearButton &&
+                  controller != null &&
+                  controller!.text.isNotEmpty
               ? GestureDetector(
                   onTap: () {
                     controller?.clear();

@@ -292,6 +292,7 @@ class _LocationScreenState extends State<LocationScreen> {
             'fullAddress': result.fullAddress ?? result.locationName ?? '',
             'latitude': result.latitude,
             'longitude': result.longitude,
+            'locationName': result.locationName,
             'notes': result.notes,
           });
 
@@ -468,13 +469,11 @@ class _LocationScreenState extends State<LocationScreen> {
                               padding: const EdgeInsets.all(16),
                               child: _isLoadingLocation
                                   ? const SizedBox(
-                                      width: 28,
-                                      height: 28,
+                                      width: 30,
+                                      height: 30,
                                       child: CircularProgressIndicator(
-                                        strokeWidth: 3,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                                Colors.white),
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
                                       ),
                                     )
                                   : const Icon(
@@ -845,12 +844,11 @@ class _LocationScreenState extends State<LocationScreen> {
                 ),
                 child: _isSaving
                     ? const SizedBox(
-                        width: 24,
-                        height: 24,
+                        width: 30,
+                        height: 30,
                         child: CircularProgressIndicator(
+                          color: Colors.white,
                           strokeWidth: 2.5,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : Text(

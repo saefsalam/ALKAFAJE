@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:lottie/lottie.dart';
 import 'dart:async';
 import '../models/product_model.dart';
 import '../utls/constants.dart';
@@ -62,12 +63,38 @@ class _ProductCardState extends State<ProductCard> {
   }
 
   Future<void> _toggleFavorite() async {
+    if (!AuthService.isLoggedIn) {
+      _showFavoriteLoginMessage();
+      return;
+    }
+
     final itemId = widget.item is Map ? widget.item['id'] : widget.item.id;
     final newState = await FavoritesService.toggleFavorite(itemId);
     if (!mounted) return;
     setState(() {
       _isFavorite = newState;
     });
+  }
+
+  void _showFavoriteLoginMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'لا يمكن وضع المنتج في المفضلة إلا بعد تسجيل الدخول',
+          style: GoogleFonts.cairo(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        backgroundColor: AppColors.primaryColor,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+    );
   }
 
   void _extractImages() {
@@ -153,6 +180,8 @@ class _ProductCardState extends State<ProductCard> {
         : widget.item.discountPercent;
     final Item? mapItem =
         widget.item is Map ? Item.fromJson(widget.item) : null;
+    final Item productModel =
+        widget.item is Map ? mapItem! : widget.item as Item;
     final double basePrice = (price as num).toDouble();
     final int discountPercentValue = (discountPercent as num?)?.toInt() ?? 0;
     final double effectivePrice =
@@ -216,10 +245,11 @@ class _ProductCardState extends State<ProductCard> {
                                     height: widget.imageHeight,
                                     color: Colors.grey[200],
                                     child: Center(
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.primaryColor
-                                            .withOpacity(0.5),
+                                      child: Lottie.asset(
+                                        'assets/animations/Shark.json',
+                                        width: 120,
+                                        height: 120,
+                                        fit: BoxFit.contain,
                                       ),
                                     ),
                                   ),
@@ -419,6 +449,11 @@ class _ProductCardState extends State<ProductCard> {
                     imagePath:
                         _images.isNotEmpty ? _images[0] : 'assets/img/main.png',
                     description: description,
+                    requiresOptionSelection:
+                        productModel.requiresOptionSelection,
+                    onRequireSelection: () {
+                      Get.to(() => ProductDetailScreen(item: productModel));
+                    },
                   ),
                 ],
               ),
@@ -441,6 +476,8 @@ class _AddToCartButton extends StatefulWidget {
   final int? discountPercent;
   final String imagePath;
   final String? description;
+  final bool requiresOptionSelection;
+  final VoidCallback? onRequireSelection;
 
   const _AddToCartButton({
     required this.itemId,
@@ -450,6 +487,8 @@ class _AddToCartButton extends StatefulWidget {
     this.discountPercent,
     required this.imagePath,
     this.description,
+    this.requiresOptionSelection = false,
+    this.onRequireSelection,
   });
 
   @override
@@ -465,10 +504,11 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
   void initState() {
     super.initState();
     _loadQuantity();
-    
+
     // الاستماع للتغييرات من CartUpdateService
     _cartSubscription = CartUpdateService.cartChangeStream.listen((_) {
-      print('🔔 [ProductCard] تم استقبال إشعار بتغيير في السلة - إعادة تحميل الكمية');
+      print(
+          '🔔 [ProductCard] تم استقبال إشعار بتغيير في السلة - إعادة تحميل الكمية');
       _loadQuantity();
     });
   }
@@ -481,6 +521,13 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
 
   // تحميل الكمية حسب حالة تسجيل الدخول
   Future<void> _loadQuantity() async {
+    if (widget.requiresOptionSelection) {
+      if (mounted) {
+        setState(() => _quantity = 0);
+      }
+      return;
+    }
+
     int qty = 0;
 
     if (AuthService.isLoggedIn) {
@@ -568,14 +615,14 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
         // التحقق من وجود المنتج في السلة
         final cartId = await _getOrCreateCart();
         if (cartId == null) return false;
-        
+
         final existingItem = await _supabase
             .from('cart_items')
             .select('id')
             .eq('cart_id', cartId)
             .eq('item_id', itemId)
             .maybeSingle();
-        
+
         if (existingItem != null) {
           // تحديث الكمية
           return await AuthService.updateCartItemQuantity(itemId, newQuantity);
@@ -591,6 +638,11 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
   }
 
   void _showCartBottomSheet() {
+    if (widget.requiresOptionSelection) {
+      widget.onRequireSelection?.call();
+      return;
+    }
+
     int selectedQuantity = _quantity > 0 ? _quantity : 1;
 
     showModalBottomSheet(
@@ -657,9 +709,12 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
                             fit: BoxFit.cover,
                             placeholder: (context, url) => Container(
                               color: Colors.grey[200],
-                              child: const Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
+                              child: Center(
+                                child: Lottie.asset(
+                                  'assets/animations/Shark.json',
+                                  width: 100,
+                                  height: 100,
+                                  fit: BoxFit.contain,
                                 ),
                               ),
                             ),
@@ -935,17 +990,21 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
 
   @override
   Widget build(BuildContext context) {
+    final bool needsOptions = widget.requiresOptionSelection;
+
     return GestureDetector(
       onTap: _showCartBottomSheet,
       child: Container(
         height: 30,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: _quantity > 0
-              ? AppColors.primaryColor.withOpacity(0.1)
-              : AppColors.primaryColor,
+          color: needsOptions
+              ? AppColors.primaryColor
+              : _quantity > 0
+                  ? AppColors.primaryColor.withOpacity(0.1)
+                  : AppColors.primaryColor,
           borderRadius: BorderRadius.circular(10),
-          border: _quantity > 0
+          border: !needsOptions && _quantity > 0
               ? Border.all(color: AppColors.primaryColor.withOpacity(0.3))
               : null,
         ),
@@ -954,19 +1013,38 @@ class _AddToCartButtonState extends State<_AddToCartButton> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                _quantity > 0 ? Icons.shopping_cart : Icons.add_shopping_cart,
-                color: _quantity > 0 ? AppColors.primaryColor : Colors.white,
+                needsOptions
+                    ? Icons.tune_rounded
+                    : _quantity > 0
+                        ? Icons.shopping_cart
+                        : Icons.add_shopping_cart,
+                color: needsOptions
+                    ? Colors.white
+                    : _quantity > 0
+                        ? AppColors.primaryColor
+                        : Colors.white,
                 size: 14,
               ),
               const SizedBox(width: 4),
-              Text(
-                _quantity > 0 ? 'في السلة ($_quantity)' : 'أضف للسلة',
-                style: GoogleFonts.cairo(
-                  color: _quantity > 0 ? AppColors.primaryColor : Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+              if (needsOptions)
+                Text(
+                  'اختر اللون/الحجم',
+                  style: GoogleFonts.cairo(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                Text(
+                  _quantity > 0 ? 'في السلة ($_quantity)' : 'أضف للسلة',
+                  style: GoogleFonts.cairo(
+                    color:
+                        _quantity > 0 ? AppColors.primaryColor : Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
             ],
           ),
         ),

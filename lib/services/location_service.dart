@@ -12,7 +12,7 @@ class LocationService {
   static const String DEFAULT_SHOP_ID = '550e8400-e29b-41d4-a716-446655440001';
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // الحصول على جميع المواقع المحفوظة للعميل
+  // الحصول على جميع المواقع المحفوظة للعميل (باستثناء المحذوفة)
   // ═══════════════════════════════════════════════════════════════════════════
 
   static Future<List<CustomerLocation>> getCustomerLocations({
@@ -24,6 +24,7 @@ class LocationService {
           .select()
           .eq('customer_id', customerId)
           .eq('shop_id', DEFAULT_SHOP_ID)
+          .or('is_deleted.is.null,is_deleted.eq.false') // استثناء المحذوفة
           .order('is_default', ascending: false) // الموقع الرئيسي أولاً
           .order('created_at', ascending: false);
 
@@ -166,10 +167,10 @@ class LocationService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // حذف موقع
+  // حذف موقع (Soft Delete إذا كان مرتبط بطلبات)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  static Future<bool> deleteLocation({
+  static Future<Map<String, dynamic>> deleteLocation({
     required int locationId,
     required int customerId,
   }) async {
@@ -181,15 +182,38 @@ class LocationService {
         orElse: () => throw Exception('الموقع غير موجود'),
       );
 
-      await _supabase.from('location').delete().eq('id', locationId);
+      // التحقق من عدم وجود طلبات مرتبطة بهذا الموقع
+      final ordersCount = await _supabase
+          .from('orders')
+          .select('id')
+          .eq('assigned_location_id', locationId)
+          .count();
 
-      print('✅ تم حذف الموقع $locationId');
+      final hasOrders = ordersCount.count > 0;
+
+      if (hasOrders) {
+        // إذا كان هناك طلبات مرتبطة، نقوم بـ Soft Delete
+        // نضيف علامة للموقع أنه محذوف (نغير الاسم ونضيف is_deleted)
+        await _supabase.from('location').update({
+          'is_deleted': true,
+          'is_default': false,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', locationId);
+
+        print('✅ تم تعطيل الموقع $locationId (Soft Delete - مرتبط بطلبات)');
+      } else {
+        // إذا لم يكن هناك طلبات، نحذف فعلياً
+        await _supabase.from('location').delete().eq('id', locationId);
+        print('✅ تم حذف الموقع $locationId نهائياً');
+      }
 
       // إذا كان الموقع المحذوف هو الرئيسي، اجعل أول موقع آخر رئيسي
       if (locationToDelete.isDefault && allLocations.length > 1) {
-        final nextLocation =
-            allLocations.firstWhere((loc) => loc.id != locationId);
-        if (nextLocation.id != null) {
+        final nextLocation = allLocations.firstWhere(
+          (loc) => loc.id != locationId,
+          orElse: () => allLocations.first,
+        );
+        if (nextLocation.id != null && nextLocation.id != locationId) {
           await updateLocation(
             locationId: nextLocation.id!,
             customerId: customerId,
@@ -198,10 +222,42 @@ class LocationService {
         }
       }
 
-      return true;
+      return {
+        'success': true,
+        'softDeleted': hasOrders,
+        'message': hasOrders
+            ? 'تم إخفاء الموقع (مرتبط بطلبات سابقة)'
+            : 'تم حذف الموقع بنجاح',
+      };
     } catch (e) {
       print('❌ خطأ في حذف الموقع: $e');
-      return false;
+
+      // إذا فشل الحذف بسبب Foreign Key، نحاول Soft Delete
+      if (e.toString().contains('foreign key') ||
+          e.toString().contains('23503')) {
+        try {
+          await _supabase.from('location').update({
+            'is_deleted': true,
+            'is_default': false,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', locationId);
+
+          print('✅ تم تعطيل الموقع $locationId (Soft Delete - fallback)');
+          return {
+            'success': true,
+            'softDeleted': true,
+            'message': 'تم إخفاء الموقع (مرتبط بطلبات سابقة)',
+          };
+        } catch (softDeleteError) {
+          print('❌ فشل Soft Delete أيضاً: $softDeleteError');
+        }
+      }
+
+      return {
+        'success': false,
+        'softDeleted': false,
+        'message': 'فشل في حذف الموقع',
+      };
     }
   }
 

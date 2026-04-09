@@ -54,7 +54,7 @@ class HomeController extends GetxController {
         if (itemIds.isNotEmpty) {
           final itemsData = await _supabase
               .from('items')
-              .select('*, item_images(*)')
+              .select('*, item_images(*), item_colors(*), item_sizes(*)')
               .inFilter('id', itemIds)
               .eq('is_active', true)
               .eq('is_deleted', false);

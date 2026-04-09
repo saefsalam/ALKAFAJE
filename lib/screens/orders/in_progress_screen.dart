@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../utls/constants.dart';
 import '../../models/order_model.dart';
 import '../../services/order_service.dart';
+import '../../widget/loading_animation.dart';
 import 'order_detail_screen.dart';
 
 class InProgressScreen extends StatefulWidget {
@@ -58,8 +59,8 @@ class _InProgressScreenState extends State<InProgressScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Center(
-        child: CircularProgressIndicator(color: AppColors.primaryColor),
+      return const Center(
+        child: LoadingAnimation(size: 150),
       );
     }
 

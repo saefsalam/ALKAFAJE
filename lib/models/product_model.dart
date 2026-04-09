@@ -100,6 +100,201 @@ class ItemImage {
 // ═══════════════════════════════════════════════════════════
 
 /// أنواع التاغات للمنتجات
+class ItemColorOption {
+  final int id;
+  final int itemId;
+  final String name;
+  final String? hexCode;
+  final int sortOrder;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  ItemColorOption({
+    required this.id,
+    required this.itemId,
+    required this.name,
+    this.hexCode,
+    this.sortOrder = 1,
+    this.isActive = true,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
+
+  factory ItemColorOption.fromJson(Map<String, dynamic> json) {
+    return ItemColorOption(
+      id: json['id'] as int,
+      itemId: json['item_id'] as int,
+      name: (json['name'] ?? '').toString(),
+      hexCode: json['hex_code']?.toString(),
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 1,
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'item_id': itemId,
+      'name': name,
+      'hex_code': hexCode,
+      'sort_order': sortOrder,
+      'is_active': isActive,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+    };
+  }
+}
+
+class ItemSizeOption {
+  final int id;
+  final int itemId;
+  final String name;
+  final int sortOrder;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  ItemSizeOption({
+    required this.id,
+    required this.itemId,
+    required this.name,
+    this.sortOrder = 1,
+    this.isActive = true,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
+
+  factory ItemSizeOption.fromJson(Map<String, dynamic> json) {
+    return ItemSizeOption(
+      id: json['id'] as int,
+      itemId: json['item_id'] as int,
+      name: (json['name'] ?? '').toString(),
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 1,
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'item_id': itemId,
+      'name': name,
+      'sort_order': sortOrder,
+      'is_active': isActive,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+    };
+  }
+}
+
+String buildProductSelectionKey({
+  int? colorId,
+  int? sizeId,
+}) {
+  return 'c:${colorId ?? 0}|s:${sizeId ?? 0}';
+}
+
+String formatProductSelectionLabel({
+  String? colorName,
+  String? sizeName,
+}) {
+  final List<String> parts = <String>[];
+  final String? cleanColor = colorName?.trim();
+  final String? cleanSize = sizeName?.trim();
+
+  if (cleanColor != null && cleanColor.isNotEmpty) {
+    parts.add('اللون: $cleanColor');
+  }
+
+  if (cleanSize != null && cleanSize.isNotEmpty) {
+    parts.add('الحجم: $cleanSize');
+  }
+
+  return parts.join(' - ');
+}
+
+class ProductOptionSelection {
+  final int? colorId;
+  final String? colorName;
+  final String? colorHex;
+  final int? sizeId;
+  final String? sizeName;
+
+  const ProductOptionSelection({
+    this.colorId,
+    this.colorName,
+    this.colorHex,
+    this.sizeId,
+    this.sizeName,
+  });
+
+  factory ProductOptionSelection.fromChoices({
+    ItemColorOption? color,
+    ItemSizeOption? size,
+  }) {
+    return ProductOptionSelection(
+      colorId: color?.id,
+      colorName: color?.name,
+      colorHex: color?.hexCode,
+      sizeId: size?.id,
+      sizeName: size?.name,
+    );
+  }
+
+  factory ProductOptionSelection.fromJson(Map<String, dynamic> json) {
+    return ProductOptionSelection(
+      colorId: (json['selected_color_id'] as num?)?.toInt(),
+      colorName: json['selected_color_name']?.toString(),
+      colorHex: json['selected_color_hex']?.toString(),
+      sizeId: (json['selected_size_id'] as num?)?.toInt(),
+      sizeName: json['selected_size_name']?.toString(),
+    );
+  }
+
+  String get selectionKey => buildProductSelectionKey(
+        colorId: colorId,
+        sizeId: sizeId,
+      );
+
+  bool get isEmpty {
+    return (colorId == null || colorId == 0) &&
+        (sizeId == null || sizeId == 0) &&
+        (colorName == null || colorName!.trim().isEmpty) &&
+        (sizeName == null || sizeName!.trim().isEmpty);
+  }
+
+  String get label => formatProductSelectionLabel(
+        colorName: colorName,
+        sizeName: sizeName,
+      );
+
+  Map<String, dynamic> toCartPayload() {
+    return {
+      'selection_key': selectionKey,
+      'selected_color_id': colorId,
+      'selected_color_name': colorName,
+      'selected_color_hex': colorHex,
+      'selected_size_id': sizeId,
+      'selected_size_name': sizeName,
+    };
+  }
+}
+
 enum ItemTag {
   discount, // تخفيض
   ramadan, // رمضان
@@ -164,6 +359,8 @@ class Item {
   // علاقات
   final Category? category; // التصنيف
   final List<ItemImage> images; // الصور
+  final List<ItemColorOption> colors;
+  final List<ItemSizeOption> sizes;
 
   Item({
     required this.id,
@@ -181,6 +378,8 @@ class Item {
     DateTime? updatedAt,
     this.category,
     this.images = const [],
+    this.colors = const [],
+    this.sizes = const [],
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
@@ -228,6 +427,20 @@ class Item {
   // هل المنتج الأكثر مبيعاً؟
   bool get isBestSeller => tags.contains(ItemTag.bestSeller);
 
+  List<ItemColorOption> get availableColors =>
+      colors.where((option) => option.isActive).toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+  List<ItemSizeOption> get availableSizes =>
+      sizes.where((option) => option.isActive).toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+  bool get hasColorOptions => availableColors.isNotEmpty;
+
+  bool get hasSizeOptions => availableSizes.isNotEmpty;
+
+  bool get requiresOptionSelection => hasColorOptions || hasSizeOptions;
+
   // تحويل من JSON
   factory Item.fromJson(Map<String, dynamic> json, {List<ItemImage>? images}) {
     // معالجة الصور من JSON أو من parameter
@@ -242,6 +455,18 @@ class Item {
           .map((img) => ItemImage.fromJson(img))
           .toList();
     }
+
+    final List<ItemColorOption> itemColors = json['item_colors'] != null
+        ? (json['item_colors'] as List)
+            .map((color) => ItemColorOption.fromJson(color))
+            .toList()
+        : const <ItemColorOption>[];
+
+    final List<ItemSizeOption> itemSizes = json['item_sizes'] != null
+        ? (json['item_sizes'] as List)
+            .map((size) => ItemSizeOption.fromJson(size))
+            .toList()
+        : const <ItemSizeOption>[];
 
     return Item(
       id: json['id'],
@@ -277,6 +502,8 @@ class Item {
       category:
           json['category'] != null ? Category.fromJson(json['category']) : null,
       images: itemImages,
+      colors: itemColors,
+      sizes: itemSizes,
     );
   }
 
@@ -298,6 +525,8 @@ class Item {
       'updated_at': updatedAt.toIso8601String(),
       'category': category?.toJson(),
       'images': images.map((img) => img.toJson()).toList(),
+      'item_colors': colors.map((color) => color.toJson()).toList(),
+      'item_sizes': sizes.map((size) => size.toJson()).toList(),
     };
   }
 
